@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>esprima#harmony pretty output</title>
+  <script src="./esharmony-compiled.js"></script>
+
+  <link rel="stylesheet" href="./styles/code.css" />
+  <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.5.0/pure-min.css" />
+
+  <style type="text/css" media="screen">
+
+    * {
+      -webkit-box-sizing: border-box;
+      -moz-box-sizing: border-box;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    .error {
+      color: red;
+    }
+
+    .json-key {
+      color: brown;
+    }
+    .json-value {
+      color: navy;
+    }
+    .json-string {
+      color: olive;
+    }
+
+    pre, textarea {
+      overflow: auto;
+      height: 300px;
+      width: 100%;
+      margin: 0;
+      padding: 10px;
+      outline: none;
+      border: none;
+      resize: none;
+
+      background: #f1efee;
+      color: #68615e;
+    }
+
+    pre {
+      font-size: 11px;
+    }
+
+    textarea {
+      font-size: 13px;
+      border-bottom: 1px silver dashed;
+    }
+
+    pre, code, textarea {
+      font-family: Menlo;
+    }
+
+    #pre-es6-ast, #pre-es5-ast {
+      border-left: 1px silver dashed;
+    }
+
+    #pre-es6-ast {
+      border-bottom: 1px silver dashed;
+    }
+
+    #pre-es5-code {
+      font-size: 13px;
+    }
+
+  </style>
+
+</head>
+<body>
+
+  <div id="layout">
+
+    <div class="pure-g">
+
+        <div class="pure-u-1-2">
+          <textarea id="es6-code"></textarea>
+          <pre id="pre-es5-code"><code id="es5-code"></code></pre>
+        </div>
+        <div class="pure-u-1-2">
+          <pre id="pre-es6-ast"><code id="es6-ast"></code></pre>
+          <pre id="pre-es5-ast"><code id="es5-ast"></code></pre>
+        </div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>
