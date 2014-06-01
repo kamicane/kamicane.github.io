@@ -442,7 +442,7 @@
             var nestedId;
             if (valueId) {
               nestedId = scope.uniqueId(valueId.name + i);
-              declarations.push(create(nestedId, member));
+              scope.declareBefore(pattern, nestedId, member);
             }
             destructPattern(scope, declarations, nestedId, element, asAssignment);
           }
@@ -465,7 +465,7 @@
             var nestedId;
             if (valueId) {
               nestedId = scope.uniqueId(property.key.name);
-              declarations.push(create(nestedId, member));
+              scope.declareBefore(pattern, nestedId, member);
             }
             destructPattern(scope, declarations, nestedId, property.value, asAssignment);
           }
@@ -7396,13 +7396,6 @@
     });
     module.exports = $;
   },
-  './node_modules/mout/lang/isInteger.js': function (require, module, exports, global) {
-    var isNumber = require('./node_modules/mout/lang/isNumber.js');
-    function isInteger(val) {
-      return isNumber(val) && val % 1 === 0;
-    }
-    module.exports = isInteger;
-  },
   './node_modules/mout/array/slice.js': function (require, module, exports, global) {
     function slice(arr, start, end) {
       var len = arr.length;
@@ -7427,6 +7420,13 @@
       return result;
     }
     module.exports = slice;
+  },
+  './node_modules/mout/lang/isInteger.js': function (require, module, exports, global) {
+    var isNumber = require('./node_modules/mout/lang/isNumber.js');
+    function isInteger(val) {
+      return isNumber(val) && val % 1 === 0;
+    }
+    module.exports = isInteger;
   },
   './node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
     var isKind = require('./node_modules/mout/lang/isKind.js');
@@ -7752,6 +7752,220 @@
       return -1;
     }
     module.exports = indexOf;
+  },
+  './node_modules/scopes/index.js': function (require, module, exports, global) {
+    'use strict';
+    var Syntax = require('./node_modules/esprima/esprima.js').Syntax;
+    var estraverse = require('./node_modules/estraverse/estraverse.js');
+    var escope = require('./node_modules/escope/escope.js');
+    var type = require('./node_modules/typeof/index.js');
+    function Scope(scope) {
+      var references = {};
+      var variables = {};
+      var include = function (reference) {
+        var name = reference.identifier.name;
+        if (!references.hasOwnProperty(name))
+          references[name] = [];
+        references[name].push(reference.identifier);
+      };
+      scope.through.forEach(include);
+      scope.references.forEach(include);
+      scope.variables.forEach(function (v) {
+        variables[v.name] = v.identifiers;
+      });
+      var block = this.node = scope.block;
+      if (scope.type === 'function') {
+        this.body = block.body.body;
+      } else {
+        this.body = block.body;
+      }
+      this.thisFound = scope.thisFound;
+      this.vars = variables;
+      this.refs = references;
+      this.children = [];
+    }
+    Scope.prototype.declares = function (name) {
+      var vars = this.vars;
+      return vars.hasOwnProperty(name) ? vars[name] : null;
+    };
+    Scope.prototype.references = function (name) {
+      var refs = this.refs;
+      return refs.hasOwnProperty(name) ? refs[name] : null;
+    };
+    Scope.prototype.traverse = function (visitor) {
+      var self = this;
+      var scopes = self.children;
+      var blocks = scopes.map(function (child) {
+          return child.node;
+        });
+      estraverse.traverse(self.node, {
+        enter: function (node, parent) {
+          var index = blocks.indexOf(node);
+          if (index > -1) {
+            scopes[index].traverse(visitor);
+            this.skip();
+          } else {
+            visitor.call(this, self, node, parent);
+          }
+        }
+      });
+      return this;
+    };
+    Scope.prototype.replace = function (visitor) {
+      var self = this;
+      var scopes = self.children;
+      var blocks = scopes.map(function (child) {
+          return child.node;
+        });
+      estraverse.replace(self.node, {
+        enter: function (node, parent) {
+          var index = blocks.indexOf(node);
+          if (index > -1) {
+            scopes[index].traverse(visitor);
+            this.skip();
+          } else {
+            return visitor.call(this, self, node, parent);
+          }
+        }
+      });
+      return this;
+    };
+    Scope.prototype.loop = function (visitor) {
+      visitor.call(this);
+      this.children.forEach(function (child) {
+        child.loop(visitor);
+      });
+      return this;
+    };
+    Scope.prototype.id = function (name) {
+      var identifier = {
+          type: Syntax.Identifier,
+          name: name
+        };
+      var scope = this;
+      while (scope) {
+        var refs = scope.refs;
+        if (!refs.hasOwnProperty(name))
+          refs[name] = [];
+        refs[name].push(identifier);
+        scope = scope.parent;
+      }
+      return identifier;
+    };
+    Scope.prototype.uniqueId = function (name) {
+      while (this.references(name))
+        name = '_' + name;
+      return this.id(name);
+    };
+    Scope.prototype.sequenceId = function (name) {
+      var i = 1, original = name;
+      while (this.references(name))
+        name = original + i++;
+      return this.id(name);
+    };
+    var declaration = function (scope, identifier, init) {
+      var declarators;
+      if (type(identifier) === 'array') {
+        declarators = identifier;
+      } else {
+        if (type(identifier) === 'string')
+          identifier = scope.id(identifier);
+        declarators = [{
+            type: Syntax.VariableDeclarator,
+            id: identifier,
+            init: init
+          }];
+      }
+      declarators.forEach(function (declarator) {
+        var name = declarator.id.name;
+        var vars = scope.vars;
+        if (!vars.hasOwnProperty(name))
+          vars[name] = [];
+        vars[name].push(declarator.id);
+      });
+      return {
+        type: Syntax.VariableDeclaration,
+        declarations: declarators,
+        kind: 'var'
+      };
+    };
+    Scope.prototype.declareBefore = function (node, identifier, init) {
+      return scopes.insertBefore(this.node, node, declaration(this, identifier, init));
+    };
+    Scope.prototype.declareIn = function (body, index, identifier, init) {
+      return scopes.insertIn(body, index, declaration(this, identifier, init));
+    };
+    Scope.prototype.declareAfter = function (node, identifier, init) {
+      return scopes.insertAfter(this.node, node, declaration(this, identifier, init));
+    };
+    Scope.prototype.declare = function (index, identifier, init) {
+      return scopes.insertIn(this.body, index, declaration(this, identifier, init));
+    };
+    var generate = function (scopeObject, root) {
+      var scopeClass = new Scope(scopeObject);
+      if (!root)
+        root = scopeClass;
+      scopeObject.childScopes.forEach(function (childScopeObject) {
+        var childScopeClass = generate(childScopeObject, root);
+        childScopeClass.parent = scopeClass;
+        scopeClass.children.push(childScopeClass);
+      });
+      scopeClass.root = root;
+      return scopeClass;
+    };
+    var blockIndex = function (root, match) {
+      var index = -1;
+      var parent;
+      estraverse.traverse(root, {
+        enter: function (node) {
+          if (node !== match)
+            return;
+          var parents = this.parents();
+          var matchRoot = node;
+          for (var i = parents.length; i--;) {
+            parent = parents[i];
+            if (type(parent.body) === 'array') {
+              parent = parent.body;
+              break;
+            }
+            if (type(parent.consequent) === 'array') {
+              parent = parent.consequent;
+              break;
+            }
+            matchRoot = parent;
+          }
+          index = parent.indexOf(matchRoot);
+          this.break();
+        }
+      });
+      return [
+        parent,
+        index
+      ];
+    };
+    var scopes = function (tree) {
+      var scopes = escope.analyze(tree, { ignoreEval: true }).scopes;
+      return generate(scopes[0]);
+    };
+    scopes.insertBefore = function (root, match, node) {
+      var bi = blockIndex(root, match);
+      var body = bi[0];
+      var index = bi[1];
+      body.splice(index === -1 ? 0 : index, 0, node);
+      return node;
+    };
+    scopes.insertIn = function (body, index, node) {
+      body.splice(index === -1 ? 0 : index, 0, node);
+      return node;
+    };
+    scopes.insertAfter = function (root, match, node) {
+      var bi = blockIndex(root, match);
+      var body = bi[0];
+      var index = bi[1];
+      body.splice(index + 1, 0, node);
+      return node;
+    };
+    module.exports = scopes;
   },
   './node_modules/estraverse/estraverse.js': function (require, module, exports, global) {
     (function (root, factory) {
@@ -8364,220 +8578,6 @@
       exports.VisitorOption = VisitorOption;
       exports.Controller = Controller;
     }));
-  },
-  './node_modules/scopes/index.js': function (require, module, exports, global) {
-    'use strict';
-    var Syntax = require('./node_modules/esprima/esprima.js').Syntax;
-    var estraverse = require('./node_modules/estraverse/estraverse.js');
-    var escope = require('./node_modules/escope/escope.js');
-    var type = require('./node_modules/typeof/index.js');
-    function Scope(scope) {
-      var references = {};
-      var variables = {};
-      var include = function (reference) {
-        var name = reference.identifier.name;
-        if (!references.hasOwnProperty(name))
-          references[name] = [];
-        references[name].push(reference.identifier);
-      };
-      scope.through.forEach(include);
-      scope.references.forEach(include);
-      scope.variables.forEach(function (v) {
-        variables[v.name] = v.identifiers;
-      });
-      var block = this.node = scope.block;
-      if (scope.type === 'function') {
-        this.body = block.body.body;
-      } else {
-        this.body = block.body;
-      }
-      this.thisFound = scope.thisFound;
-      this.vars = variables;
-      this.refs = references;
-      this.children = [];
-    }
-    Scope.prototype.declares = function (name) {
-      var vars = this.vars;
-      return vars.hasOwnProperty(name) ? vars[name] : null;
-    };
-    Scope.prototype.references = function (name) {
-      var refs = this.refs;
-      return refs.hasOwnProperty(name) ? refs[name] : null;
-    };
-    Scope.prototype.traverse = function (visitor) {
-      var self = this;
-      var scopes = self.children;
-      var blocks = scopes.map(function (child) {
-          return child.node;
-        });
-      estraverse.traverse(self.node, {
-        enter: function (node, parent) {
-          var index = blocks.indexOf(node);
-          if (index > -1) {
-            scopes[index].traverse(visitor);
-            this.skip();
-          } else {
-            visitor.call(this, self, node, parent);
-          }
-        }
-      });
-      return this;
-    };
-    Scope.prototype.replace = function (visitor) {
-      var self = this;
-      var scopes = self.children;
-      var blocks = scopes.map(function (child) {
-          return child.node;
-        });
-      estraverse.replace(self.node, {
-        enter: function (node, parent) {
-          var index = blocks.indexOf(node);
-          if (index > -1) {
-            scopes[index].traverse(visitor);
-            this.skip();
-          } else {
-            return visitor.call(this, self, node, parent);
-          }
-        }
-      });
-      return this;
-    };
-    Scope.prototype.loop = function (visitor) {
-      visitor.call(this);
-      this.children.forEach(function (child) {
-        child.loop(visitor);
-      });
-      return this;
-    };
-    Scope.prototype.id = function (name) {
-      var identifier = {
-          type: Syntax.Identifier,
-          name: name
-        };
-      var scope = this;
-      while (scope) {
-        var refs = scope.refs;
-        if (!refs.hasOwnProperty(name))
-          refs[name] = [];
-        refs[name].push(identifier);
-        scope = scope.parent;
-      }
-      return identifier;
-    };
-    Scope.prototype.uniqueId = function (name) {
-      while (this.references(name))
-        name = '_' + name;
-      return this.id(name);
-    };
-    Scope.prototype.sequenceId = function (name) {
-      var i = 1, original = name;
-      while (this.references(name))
-        name = original + i++;
-      return this.id(name);
-    };
-    var declaration = function (scope, identifier, init) {
-      var declarators;
-      if (type(identifier) === 'array') {
-        declarators = identifier;
-      } else {
-        if (type(identifier) === 'string')
-          identifier = scope.id(identifier);
-        declarators = [{
-            type: Syntax.VariableDeclarator,
-            id: identifier,
-            init: init
-          }];
-      }
-      declarators.forEach(function (declarator) {
-        var name = declarator.id.name;
-        var vars = scope.vars;
-        if (!vars.hasOwnProperty(name))
-          vars[name] = [];
-        vars[name].push(declarator.id);
-      });
-      return {
-        type: Syntax.VariableDeclaration,
-        declarations: declarators,
-        kind: 'var'
-      };
-    };
-    Scope.prototype.declareBefore = function (node, identifier, init) {
-      return scopes.insertBefore(this.node, node, declaration(this, identifier, init));
-    };
-    Scope.prototype.declareIn = function (body, index, identifier, init) {
-      return scopes.insertIn(body, index, declaration(this, identifier, init));
-    };
-    Scope.prototype.declareAfter = function (node, identifier, init) {
-      return scopes.insertAfter(this.node, node, declaration(this, identifier, init));
-    };
-    Scope.prototype.declare = function (index, identifier, init) {
-      return scopes.insertIn(this.body, index, declaration(this, identifier, init));
-    };
-    var generate = function (scopeObject, root) {
-      var scopeClass = new Scope(scopeObject);
-      if (!root)
-        root = scopeClass;
-      scopeObject.childScopes.forEach(function (childScopeObject) {
-        var childScopeClass = generate(childScopeObject, root);
-        childScopeClass.parent = scopeClass;
-        scopeClass.children.push(childScopeClass);
-      });
-      scopeClass.root = root;
-      return scopeClass;
-    };
-    var blockIndex = function (root, match) {
-      var index = -1;
-      var parent;
-      estraverse.traverse(root, {
-        enter: function (node) {
-          if (node !== match)
-            return;
-          var parents = this.parents();
-          var matchRoot = node;
-          for (var i = parents.length; i--;) {
-            parent = parents[i];
-            if (type(parent.body) === 'array') {
-              parent = parent.body;
-              break;
-            }
-            if (type(parent.consequent) === 'array') {
-              parent = parent.consequent;
-              break;
-            }
-            matchRoot = parent;
-          }
-          index = parent.indexOf(matchRoot);
-          this.break();
-        }
-      });
-      return [
-        parent,
-        index
-      ];
-    };
-    var scopes = function (tree) {
-      var scopes = escope.analyze(tree, { ignoreEval: true }).scopes;
-      return generate(scopes[0]);
-    };
-    scopes.insertBefore = function (root, match, node) {
-      var bi = blockIndex(root, match);
-      var body = bi[0];
-      var index = bi[1];
-      body.splice(index === -1 ? 0 : index, 0, node);
-      return node;
-    };
-    scopes.insertIn = function (body, index, node) {
-      body.splice(index === -1 ? 0 : index, 0, node);
-      return node;
-    };
-    scopes.insertAfter = function (root, match, node) {
-      var bi = blockIndex(root, match);
-      var body = bi[0];
-      var index = bi[1];
-      body.splice(index + 1, 0, node);
-      return node;
-    };
-    module.exports = scopes;
   },
   './node_modules/escodegen/node_modules/esutils/lib/utils.js': function (require, module, exports, global) {
     (function () {
@@ -10415,12 +10415,6 @@
     }
     module.exports = kindOf;
   },
-  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
-    function identity(val) {
-      return val;
-    }
-    module.exports = identity;
-  },
   './node_modules/prime/node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('./node_modules/prime/node_modules/mout/object/hasOwn.js');
     var forIn = require('./node_modules/prime/node_modules/mout/object/forIn.js');
@@ -10433,6 +10427,12 @@
     }
     module.exports = forOwn;
   },
+  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
+    function identity(val) {
+      return val;
+    }
+    module.exports = identity;
+  },
   './node_modules/mout/function/prop.js': function (require, module, exports, global) {
     function prop(name) {
       return function (obj) {
@@ -10440,21 +10440,6 @@
       };
     }
     module.exports = prop;
-  },
-  './node_modules/typeof/index.js': function (require, module, exports, global) {
-    var toString = Object.prototype.toString;
-    module.exports = function (object) {
-      var type = typeof object;
-      if (type === 'undefined') {
-        return 'undefined';
-      }
-      if (object) {
-        type = object.constructor.name;
-      } else if (type === 'object') {
-        type = toString.call(object).slice(8, -1);
-      }
-      return type.toLowerCase();
-    };
   },
   './node_modules/escope/escope.js': function (require, module, exports, global) {
     (function (factory, global) {
@@ -11141,6 +11126,21 @@
       exports.analyze = analyze;
     }, this));
   },
+  './node_modules/typeof/index.js': function (require, module, exports, global) {
+    var toString = Object.prototype.toString;
+    module.exports = function (object) {
+      var type = typeof object;
+      if (type === 'undefined') {
+        return 'undefined';
+      }
+      if (object) {
+        type = object.constructor.name;
+      } else if (type === 'object') {
+        type = toString.call(object).slice(8, -1);
+      }
+      return type.toLowerCase();
+    };
+  },
   './node_modules/mout/object/deepMatches.js': function (require, module, exports, global) {
     var forOwn = require('./node_modules/mout/object/forOwn.js');
     var isArray = require('./node_modules/mout/lang/isArray.js');
@@ -11550,6 +11550,13 @@
     }
     module.exports = forIn;
   },
+  './node_modules/mout/lang/isArray.js': function (require, module, exports, global) {
+    var isKind = require('./node_modules/mout/lang/isKind.js');
+    var isArray = Array.isArray || function (val) {
+        return isKind(val, 'Array');
+      };
+    module.exports = isArray;
+  },
   './node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('./node_modules/mout/object/hasOwn.js');
     var forIn = require('./node_modules/mout/object/forIn.js');
@@ -11561,13 +11568,6 @@
       });
     }
     module.exports = forOwn;
-  },
-  './node_modules/mout/lang/isArray.js': function (require, module, exports, global) {
-    var isKind = require('./node_modules/mout/lang/isKind.js');
-    var isArray = Array.isArray || function (val) {
-        return isKind(val, 'Array');
-      };
-    module.exports = isArray;
   },
   './node_modules/source-map/lib/source-map/base64.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
