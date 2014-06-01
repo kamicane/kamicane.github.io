@@ -264,7 +264,7 @@
     var esprima = require('./node_modules/esprima/esprima.js');
     var Syntax = esprima.Syntax;
     var estraverse = require('./node_modules/estraverse/estraverse.js');
-    var scopes = require('./node_modules/quickstart/util/scopes.js');
+    var scopes = require('./node_modules/scopes/index.js');
     var forEachRight = function (list, visitor, ctx) {
       for (var i = list.length; i--;) {
         visitor.call(ctx, list[i], i, list);
@@ -283,9 +283,9 @@
       return esprima.parse(string).body[0].expression;
     };
     var getUndefined = function (scope) {
-      if (!scope.undefinedName) {
-        scope.undefinedName = scope.uniqueName('undefined');
-        scope.undefinedNode = scope.declare(0, scope.undefinedName, {
+      if (!scope.undefinedId) {
+        scope.undefinedId = scope.uniqueId('undefined');
+        scope.undefinedNode = scope.declare(0, scope.undefinedId, {
           type: Syntax.UnaryExpression,
           operator: 'void',
           argument: {
@@ -296,108 +296,117 @@
         });
       }
       return {
-        name: scope.undefinedName,
+        id: scope.undefinedId,
         node: scope.undefinedNode
       };
     };
     var getSelf = function (scope) {
-      if (!scope.selfName) {
-        scope.selfName = scope.uniqueName('self');
-        scope.selfNode = scope.declare(0, scope.selfName, { type: Syntax.ThisExpression });
+      if (!scope.selfId) {
+        scope.selfId = scope.uniqueId('self');
+        scope.selfNode = scope.declare(0, scope.selfId, { type: Syntax.ThisExpression });
       }
       return {
-        name: scope.selfName,
+        id: scope.selfId,
         node: scope.selfNode
       };
     };
     var getSlice = function (scope) {
-      if (!scope.sliceName) {
-        scope.sliceName = scope.uniqueName('slice');
-        scope.sliceNode = scope.declare(0, scope.sliceName, expression('Array.prototype.slice'));
+      if (!scope.sliceId) {
+        scope.sliceId = scope.uniqueId('slice');
+        scope.sliceNode = scope.declare(0, scope.sliceId, expression('Array.prototype.slice'));
       }
       return {
-        name: scope.sliceName,
+        id: scope.sliceId,
         node: scope.sliceNode
       };
     };
     var getCreate = function (scope) {
-      if (!scope.createName) {
-        scope.createName = scope.uniqueName('create');
-        scope.createNode = scope.declare(0, scope.createName, expression('Object.create'));
+      if (!scope.createId) {
+        scope.createId = scope.uniqueId('create');
+        scope.createNode = scope.declare(0, scope.createId, expression('Object.create'));
       }
       return {
-        name: scope.createName,
+        id: scope.createId,
         node: scope.createNode
       };
     };
     var getIsArray = function (scope) {
-      if (!scope.isArrayName) {
-        scope.isArrayName = scope.uniqueName('isArray');
-        scope.isArrayNode = scope.declare(0, scope.isArrayName, expression('Array.isArray'));
+      if (!scope.isArrayId) {
+        scope.isArrayId = scope.uniqueId('isArray');
+        scope.isArrayNode = scope.declare(0, scope.isArrayId, expression('Array.isArray'));
       }
       return {
-        name: scope.isArrayName,
+        id: scope.isArrayId,
         node: scope.isArrayNode
       };
     };
     var getApply = function (scope) {
-      if (!scope.applyName) {
+      if (!scope.applyId) {
         var create = getCreate(scope);
-        scope.applyName = scope.uniqueName('apply');
-        scope.applyNode = scope.declare(scope.body.indexOf(create.node) + 1, scope.applyName, expression('(function(constructor, rest) {' + 'var self = ' + create.name + '(constructor.prototype);' + 'constructor.apply(self, rest);' + 'return self;' + '})'));
+        scope.applyId = scope.uniqueId('apply');
+        scope.applyNode = scope.declare(scope.body.indexOf(create.node) + 1, scope.applyId, expression('(function(constructor, rest) {' + 'var self = ' + create.id.name + '(constructor.prototype);' + 'constructor.apply(self, rest);' + 'return self;' + '})'));
       }
       return {
-        name: scope.applyName,
+        id: scope.applyId,
         node: scope.applyNode
       };
     };
     var getToArray = function (scope) {
-      if (!scope.toArrayName) {
+      if (!scope.toArrayId) {
         var slice = getSlice(scope);
         var isArray = getIsArray(scope);
         var index = Math.max(scope.body.indexOf(slice.node), scope.body.indexOf(isArray.node)) + 1;
-        scope.toArrayName = scope.uniqueName('toArray');
-        scope.toArrayNode = scope.declare(index, scope.toArrayName, expression('(function(list) {' + 'return (' + isArray.name + '(list)) ? list : ' + slice.name + '.call(list);' + '})'));
+        scope.toArrayId = scope.uniqueId('toArray');
+        scope.toArrayNode = scope.declare(index, scope.toArrayId, expression('(function(list) {' + 'return (' + isArray.id.name + '(list)) ? list : ' + slice.id.name + '.call(list);' + '})'));
       }
       return {
-        name: scope.toArrayName,
-        node: scope.toArrayNode,
-        index: scope.body.indexOf(scope.toArrayNode)
+        id: scope.toArrayId,
+        node: scope.toArrayNode
       };
     };
-    var createCallExpression = function (functionName, nodes) {
+    var createCallExpression = function (functionId, nodes) {
       return {
         type: Syntax.CallExpression,
-        callee: {
-          type: Syntax.Identifier,
-          name: functionName
-        },
+        callee: functionId,
         arguments: nodes
       };
     };
-    var createSliceCallExpression = function (sliceName, node, length) {
+    var createDeclarator = function (id, init) {
       return {
-        type: Syntax.CallExpression,
-        callee: {
-          type: Syntax.MemberExpression,
-          computed: false,
-          object: {
-            type: Syntax.Identifier,
-            name: sliceName
-          },
-          property: {
-            type: Syntax.Identifier,
-            name: 'call'
-          }
-        },
-        arguments: [
-          node,
-          {
-            type: Syntax.Literal,
-            value: length || 0
-          }
-        ]
+        type: Syntax.VariableDeclarator,
+        id: id,
+        init: init
       };
+    };
+    var createAssignment = function (left, right) {
+      return {
+        type: Syntax.AssignmentExpression,
+        operator: '=',
+        left: left,
+        right: right
+      };
+    };
+    var createSliceCallExpression = function (sliceId, node, length) {
+      var sliceCall = {
+          type: Syntax.CallExpression,
+          callee: {
+            type: Syntax.MemberExpression,
+            computed: false,
+            object: sliceId,
+            property: {
+              type: Syntax.Identifier,
+              name: 'call'
+            }
+          },
+          arguments: [node]
+        };
+      if (length > 0) {
+        sliceCall.arguments.push({
+          type: Syntax.Literal,
+          value: length
+        });
+      }
+      return sliceCall;
     };
     var numbers = [
         'zero',
@@ -412,42 +421,118 @@
         'nine',
         'ten'
       ];
-    var declareArrayPattern = function (valuesName, scope, pattern) {
-      pattern.elements.forEach(function (element, i) {
-        var member = {
-            type: Syntax.MemberExpression,
-            computed: true,
-            object: {
-              type: Syntax.Identifier,
-              name: valuesName
-            },
-            property: {
-              type: Syntax.Literal,
-              value: i
+    var destructPattern = function (scope, declarations, valueId, pattern, asAssignment) {
+      var create = asAssignment ? createAssignment : createDeclarator;
+      if (pattern.type === Syntax.ArrayPattern) {
+        pattern.elements.forEach(function (element, i) {
+          if (element == null)
+            return;
+          var member = valueId ? {
+              type: Syntax.MemberExpression,
+              computed: true,
+              object: valueId,
+              property: {
+                type: Syntax.Literal,
+                value: i
+              }
+            } : null;
+          if (element.type === Syntax.Identifier) {
+            declarations.push(create(element, member));
+          } else {
+            var nestedId;
+            if (valueId) {
+              nestedId = scope.uniqueId(valueId.name + i);
+              declarations.push(create(nestedId, member));
             }
-          };
-        if (element.type === Syntax.Identifier) {
-          scope.declareBefore(element, element.name, member);
-        } else if (element.type === Syntax.ArrayPattern) {
-          var nestedName = scope.sequentialName('nested');
-          scope.declareBefore(element, nestedName, member);
-          declareArrayPattern(nestedName, scope, element);
+            destructPattern(scope, declarations, nestedId, element, assignment);
+          }
+        });
+      } else if (pattern.type === Syntax.ObjectPattern) {
+        pattern.properties.forEach(function (property) {
+          var member = valueId ? {
+              type: Syntax.MemberExpression,
+              computed: false,
+              object: valueId,
+              property: {
+                type: Syntax.Identifier,
+                name: property.key.name
+              }
+            } : null;
+          var value = property.value;
+          if (value.type === Syntax.Identifier) {
+            declarations.push(create(value, member));
+          } else {
+            var nestedId;
+            if (valueId) {
+              nestedId = scope.uniqueId(property.key.name);
+              declarations.push(create(nestedId, member));
+            }
+            destructPattern(scope, declarations, nestedId, property.value, assignment);
+          }
+        });
+      }
+      return declarations;
+    };
+    var transformPatternExpression = function (scope, node) {
+      node.expression = {
+        type: Syntax.SequenceExpression,
+        expressions: [node.expression]
+      };
+      transformPatternSequence(scope, node.expression);
+    };
+    var transformPatternSequence = function (scope, node) {
+      forEachRight(node.expressions, function (expression, i) {
+        var left = expression.left;
+        var right = expression.right;
+        if (left.type !== Syntax.ArrayPattern && left.type !== Syntax.ObjectPattern)
+          return;
+        var valueId;
+        if (right.type === Syntax.Identifier) {
+          valueId = right;
+        } else {
+          valueId = scope.uniqueId('pattern');
+          scope.declareBefore(node, valueId, right);
         }
+        var assignments = destructPattern(scope, [], valueId, left, true);
+        node.expressions.splice.apply(node.expressions, [
+          i,
+          1
+        ].concat(assignments));
       });
     };
-    var transformPattern = function (scope, node, parent) {
-      var pattern;
-      if (node.type === Syntax.VariableDeclarator) {
-        pattern = node.id;
-        var valuesName;
-        if (node.init.type === Syntax.Identifier) {
-          valuesName = node.init.name;
+    var transformPatternParams = function (scope, node) {
+      forEachRight(node.params, function (param, i) {
+        if (param.type !== Syntax.ArrayPattern && param.type !== Syntax.ObjectPattern)
+          return;
+        var newId = scope.uniqueId('pattern');
+        node.params.splice(i, 1, newId);
+        var declarators = destructPattern(scope, [], newId, param);
+        scope.declare(0, declarators);
+      });
+    };
+    var transformPatternDeclaration = function (scope, node) {
+      forEachRight(node.declarations, function (declarator, i) {
+        var pattern = declarator.id;
+        if (pattern.type !== Syntax.ArrayPattern && pattern.type !== Syntax.ObjectPattern)
+          return;
+        var declarators;
+        if (declarator.init == null) {
+          declarators = destructPattern(scope, [], null, pattern);
         } else {
-          valuesName = scope.uniqueName('values');
-          scope.declareBefore(node, valuesName, node.init);
+          var valueId;
+          if (declarator.init.type === Syntax.Identifier) {
+            valueId = declarator.init;
+          } else {
+            valueId = scope.uniqueId('pattern');
+            scope.declareBefore(node, valueId, declarator.init);
+          }
+          declarators = destructPattern(scope, [], valueId, pattern);
         }
-        declareArrayPattern(valuesName, scope, pattern);
-      }
+        node.declarations.splice.apply(node.declarations, [
+          i,
+          1
+        ].concat(declarators));
+      });
     };
     var transformThis = function (scope, node) {
       node.type = Syntax.Identifier;
@@ -483,7 +568,9 @@
           var arg = args[i];
           concat.callee.object.elements.push(arg);
         }
-        argument = createCallExpression(getToArray(root).name, [argument]);
+        if (!~scope.arrays.indexOf(argument.name)) {
+          argument = createCallExpression(getToArray(root).id, [argument]);
+        }
         concat.arguments.push(argument);
         argument = concat;
         args.splice(0, length, argument);
@@ -499,13 +586,9 @@
         } else {
           var object = node.callee.object;
           if (object.type !== Syntax.Identifier) {
-            var contextName = scope.sequentialName('context');
-            scope.declareBefore(node, contextName, node.callee.object);
-            object = {
-              type: Syntax.Identifier,
-              name: contextName
-            };
-            node.callee.object = object;
+            var contextId = scope.sequenceId('context');
+            scope.declareBefore(node, contextId, node.callee.object);
+            node.callee.object = contextId;
           }
           args.unshift(object);
         }
@@ -521,17 +604,14 @@
       } else if (node.type === Syntax.NewExpression) {
         node.type = Syntax.CallExpression;
         node.arguments.unshift(node.callee);
-        node.callee = {
-          type: Syntax.Identifier,
-          name: getApply(root).name
-        };
+        node.callee = getApply(root).id;
       } else if (node.type === Syntax.ArrayExpression) {
         if (length > 0) {
           node.type = Syntax.CallExpression;
           node.callee = argument.callee;
           node.arguments = argument.arguments;
         } else {
-          argument = createCallExpression(getToArray(root).name, [argument]);
+          argument = createSliceCallExpression(getSlice(root).id, argument, 0);
           node.type = Syntax.CallExpression;
           node.callee = argument.callee;
           node.arguments = argument.arguments;
@@ -540,7 +620,7 @@
     };
     var transformRest = function (scope, node, rest) {
       var params = node.params;
-      scope.declare(0, rest.name, createSliceCallExpression(getSlice(scope.root).name, {
+      scope.declare(0, rest, createSliceCallExpression(getSlice(scope.root).id, {
         type: Syntax.Identifier,
         name: 'arguments'
       }, params.length));
@@ -556,28 +636,20 @@
           return broken = true;
         defaults.splice(i, 1);
         var param = params.splice(i, 1)[0];
-        var undefinedName = getUndefined(root).name;
-        var undefinedIdentifier = {
-            type: Syntax.Identifier,
-            name: undefinedName
-          };
-        var argumentName = scope.uniqueName(numbers[i] || '_' + i);
-        var argumentIdentifier = {
-            type: Syntax.Identifier,
-            name: argumentName
-          };
-        scope.declare(0, param.name, {
+        var undefinedId = getUndefined(root).id;
+        var argumentId = scope.uniqueId(numbers[i] || '_' + i);
+        scope.declare(0, param, {
           type: Syntax.ConditionalExpression,
           test: {
             type: Syntax.BinaryExpression,
             operator: '===',
-            left: argumentIdentifier,
-            right: undefinedIdentifier
+            left: argumentId,
+            right: undefinedId
           },
           consequent: defaultParam,
-          alternate: argumentIdentifier
+          alternate: argumentId
         });
-        scope.declare(0, argumentName, {
+        scope.declare(0, argumentId, {
           type: Syntax.MemberExpression,
           computed: true,
           object: {
@@ -592,34 +664,48 @@
       });
     };
     var traverseScopes = function (root, result) {
-      var arrowElements = result.arrowElements;
-      var spreadElements = result.spreadElements;
-      var patternElements = result.patternElements;
-      var defaultsElements = result.defaultsElements;
-      var restElements = result.restElements;
-      root.traverse(function (scope, node, parent) {
+      root.traverse(function (scope, node) {
+        if (!scope.arrays)
+          scope.arrays = [];
         var uid = node.uid;
-        var defaultsElement = defaultsElements[uid];
-        if (defaultsElement) {
-          transformDefaults(scope, node, defaultsElement);
-        }
-        var restElement = restElements[uid];
-        if (restElement) {
-          transformRest(scope, node, restElement);
-        }
-        var spreadElement = spreadElements[uid];
-        if (spreadElement) {
-          transformSpread(scope, node, spreadElement);
-        }
-        var patternElement = patternElements[uid];
-        if (patternElement) {
-          transformPattern(scope, node, parent);
-        }
+        var functions = result.functions;
+        var arrowElements = functions.arrow;
         if (arrowElements[scope.node.uid] && node.type === Syntax.ThisExpression) {
           var parentScope = scope.parent;
           while (arrowElements[parentScope.node.uid])
             parentScope = parentScope.parent;
           transformThis(parentScope, node);
+        }
+        var defaultsElement = functions.defaults[uid];
+        if (defaultsElement) {
+          transformDefaults(scope, node, defaultsElement);
+        }
+        var patternParamsElement = functions.pattern[uid];
+        if (patternParamsElement) {
+          transformPatternParams(scope, node);
+        }
+        var restElement = functions.rest[uid];
+        if (restElement) {
+          if (!scope.references(restElement.name)) {
+            scope.arrays.push(restElement.name);
+          }
+          transformRest(scope, node, restElement);
+        }
+        var spreadElement = result.spread[uid];
+        if (spreadElement) {
+          transformSpread(scope, node, spreadElement);
+        }
+        var patternDeclarationElement = result.pattern.declaration[uid];
+        if (patternDeclarationElement) {
+          transformPatternDeclaration(scope, node);
+        }
+        var patternSequenceElement = result.pattern.sequence[uid];
+        if (patternSequenceElement) {
+          transformPatternSequence(scope, node);
+        }
+        var patternExpressionElement = result.pattern.expression[uid];
+        if (patternExpressionElement) {
+          transformPatternExpression(scope, node);
         }
       });
     };
@@ -648,26 +734,44 @@
     };
     var UID = 0;
     var normalize = function (tree) {
-      var arrowElements = {};
-      var spreadElements = {};
-      var patternElements = {};
-      var defaultsElements = {};
-      var restElements = {};
+      var result = {
+          functions: {
+            arrow: {},
+            defaults: {},
+            rest: {},
+            pattern: {}
+          },
+          spread: {},
+          pattern: {
+            declaration: {},
+            sequence: {},
+            expression: {}
+          }
+        };
       estraverse.traverse(tree, {
-        enter: function (node, parent) {
+        enter: function (node) {
           var uid = define(node, 'uid', (UID++).toString(36));
+          var i;
+          var functions = result.functions;
           if (node.type === Syntax.ArrowFunctionExpression) {
-            arrowElements[uid] = node;
+            functions.arrow[uid] = node;
             normalizeArrowFunction(node);
           }
           if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
             if (node.rest) {
-              restElements[uid] = node.rest;
+              functions.rest[uid] = node.rest;
               node.rest = null;
             }
             if (node.defaults && node.defaults.length) {
-              defaultsElements[uid] = node.defaults;
+              functions.defaults[uid] = node.defaults;
               node.defaults = [];
+            }
+            for (i = 0; i < node.params.length; i++) {
+              var param = node.params[i];
+              if (param.type === Syntax.ArrayPattern || param.type === Syntax.ObjectPattern) {
+                functions.pattern[uid] = node;
+                break;
+              }
             }
           }
           var spreadNode;
@@ -677,21 +781,64 @@
             spreadNode = normalizeSpread(node.elements);
           }
           if (spreadNode)
-            spreadElements[uid] = spreadNode;
-          if (node.type === Syntax.VariableDeclarator) {
-            if (node.id.type === Syntax.ArrayPattern) {
-              patternElements[uid] = node.id;
+            result.spread[uid] = spreadNode;
+          if (node.type === Syntax.ForInStatement && node.left.type === Syntax.VariableDeclaration) {
+            var pattern = node.left.declarations[0].id;
+            if (pattern.type === Syntax.ObjectPattern || pattern.type === Syntax.ArrayPattern) {
+              throw new Error(pattern.type + ' in ' + node.type + ' is not supported.');
             }
+          }
+          if (node.type === Syntax.VariableDeclaration) {
+            for (i = 0; i < node.declarations.length; i++) {
+              var declarator = node.declarations[i];
+              if (declarator.id.type === Syntax.ArrayPattern || declarator.id.type === Syntax.ObjectPattern) {
+                result.pattern.declaration[uid] = node;
+                break;
+              }
+            }
+          }
+          if (node.type === Syntax.ExpressionStatement && node.expression.type === Syntax.AssignmentExpression) {
+            if (node.expression.left.type === Syntax.ArrayPattern || node.expression.left.type === Syntax.ObjectPattern) {
+              result.pattern.expression[uid] = node;
+            }
+          }
+          if (node.type === Syntax.SequenceExpression) {
+            for (i = 0; i < node.expressions.length; i++) {
+              var expression = node.expressions[i];
+              if (expression.left.type === Syntax.ArrayPattern || expression.left.type === Syntax.ObjectPattern) {
+                result.pattern.sequence[uid] = node;
+                break;
+              }
+            }
+          }
+          if (node.type === Syntax.ObjectExpression || node.type === Syntax.ObjectPattern) {
+            node.properties.forEach(function (property) {
+              property.shorthand = false;
+            });
+          }
+          if (node.type === Syntax.IfStatement) {
+            if (node.consequent.type !== Syntax.BlockStatement) {
+              node.consequent = {
+                type: Syntax.BlockStatement,
+                body: [node.consequent]
+              };
+            }
+            if (node.alternate && node.alternate.type !== Syntax.BlockStatement) {
+              node.alternate = {
+                type: Syntax.BlockStatement,
+                body: [node.alternate]
+              };
+            }
+          }
+          if ((node.type === Syntax.ForStatement || node.type === Syntax.ForInStatement || node.type === Syntax.WhileStatement || node.type === Syntax.DoWhileStatement || node.type === Syntax.LabeledStatement) && node.body.type !== Syntax.BlockStatement) {
+            node.body = {
+              type: Syntax.BlockStatement,
+              body: [node.body]
+            };
           }
         }
       });
-      return {
-        arrowElements: arrowElements,
-        spreadElements: spreadElements,
-        patternElements: patternElements,
-        restElements: restElements,
-        defaultsElements: defaultsElements
-      };
+      return result;
     };
     var transform = function (tree) {
       var result = normalize(tree);
@@ -7281,185 +7428,6 @@
     }
     module.exports = slice;
   },
-  './node_modules/quickstart/util/scopes.js': function (require, module, exports, global) {
-    'use strict';
-    var Syntax = require('./node_modules/esprima/esprima.js').Syntax;
-    var estraverse = require('./node_modules/estraverse/estraverse.js');
-    var escope = require('./node_modules/escope/escope.js');
-    var type = require('./node_modules/typeof/index.js');
-    function Scope(scope) {
-      var references = [];
-      var include = function (reference) {
-        var name = reference.identifier.name;
-        if (!~references.indexOf(name))
-          references.push(name);
-      };
-      scope.through.forEach(include);
-      scope.references.forEach(include);
-      var variables = scope.variables.map(function (v) {
-          return v.name;
-        });
-      var block = this.node = scope.block;
-      this.type = scope.type;
-      if (scope.type === 'function') {
-        this.body = block.body.body;
-      } else {
-        this.body = block.body;
-      }
-      this.referencesThis = scope.thisFound;
-      this.vars = variables;
-      this.refs = references;
-      this.children = [];
-    }
-    Scope.prototype.declares = function (name) {
-      return this.vars.indexOf(name) > -1;
-    };
-    Scope.prototype.references = function (name) {
-      if (name === 'this')
-        return this.referencesThis;
-      return this.refs.indexOf(name) > -1;
-    };
-    Scope.prototype.traverse = function (visitor) {
-      var self = this;
-      var scopes = self.children;
-      var blocks = scopes.map(function (child) {
-          return child.node;
-        });
-      estraverse.traverse(self.node, {
-        enter: function (node, parent) {
-          var index = blocks.indexOf(node);
-          if (index > -1) {
-            scopes[index].traverse(visitor);
-            this.skip();
-          } else {
-            visitor.call(this, self, node, parent);
-          }
-        }
-      });
-      return this;
-    };
-    Scope.prototype.replace = function (visitor) {
-      var self = this;
-      var scopes = self.children;
-      var blocks = scopes.map(function (child) {
-          return child.node;
-        });
-      estraverse.replace(self.node, {
-        enter: function (node, parent) {
-          var index = blocks.indexOf(node);
-          if (index > -1) {
-            scopes[index].traverse(visitor);
-            this.skip();
-          } else {
-            return visitor.call(this, self, node, parent);
-          }
-        }
-      });
-      return this;
-    };
-    Scope.prototype.loop = function (visitor) {
-      visitor.call(this);
-      this.children.forEach(function (child) {
-        child.loop(visitor);
-      });
-      return this;
-    };
-    var blockIndex = function (node, match) {
-      var index = -1;
-      var parent;
-      estraverse.traverse(node, {
-        enter: function (node) {
-          if (node !== match)
-            return;
-          var parents = this.parents();
-          var matchRoot;
-          for (var i = parents.length; i--;) {
-            parent = parents[i];
-            if (type(parent.body) === 'array')
-              break;
-            matchRoot = parent;
-          }
-          index = parent.body.indexOf(matchRoot);
-          this.break();
-        }
-      });
-      return [
-        parent,
-        index
-      ];
-    };
-    var declare = function (scope, body, index, name, init) {
-      if (!~scope.vars.indexOf(name))
-        scope.vars.push(name);
-      if (!~scope.refs.indexOf(name))
-        scope.refs.push(name);
-      var declarator = {
-          type: Syntax.VariableDeclarator,
-          id: {
-            type: Syntax.Identifier,
-            name: name
-          },
-          init: init
-        };
-      var declaration = {
-          type: Syntax.VariableDeclaration,
-          declarations: [declarator],
-          kind: 'var'
-        };
-      body.splice(index, 0, declaration);
-      return declaration;
-    };
-    Scope.prototype.uniqueName = function (name) {
-      while (this.references(name))
-        name = '_' + name;
-      return name;
-    };
-    Scope.prototype.sequentialName = function (name) {
-      var i = 1, original = name;
-      while (this.references(name))
-        name = original + i++;
-      return name;
-    };
-    Scope.prototype.declare = function (index, name, init) {
-      return declare(this, this.body, index, name, init);
-    };
-    Scope.prototype.declareBefore = function (node, name, init) {
-      var body = this.body;
-      var index = body.indexOf(node);
-      if (index === -1) {
-        var bi = blockIndex(this.node, node);
-        body = bi[0].body;
-        index = bi[1];
-      }
-      return declare(this, body, index, name, init);
-    };
-    Scope.prototype.declareAfter = function (node, name, init) {
-      var body = this.body;
-      var index = body.indexOf(node);
-      if (index === -1) {
-        var bi = blockIndex(this.node, node);
-        body = bi[0].body;
-        index = bi[1];
-      }
-      return declare(this, body, index + 1, name, init);
-    };
-    var generate = function (scopeObject, root) {
-      var scopeClass = new Scope(scopeObject);
-      if (!root)
-        root = scopeClass;
-      scopeObject.childScopes.forEach(function (childScopeObject) {
-        var childScopeClass = generate(childScopeObject, root);
-        childScopeClass.parent = scopeClass;
-        scopeClass.children.push(childScopeClass);
-      });
-      scopeClass.root = root;
-      return scopeClass;
-    };
-    module.exports = function (tree) {
-      var scopes = escope.analyze(tree, { ignoreEval: true }).scopes;
-      return generate(scopes[0]);
-    };
-  },
   './node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
     var isKind = require('./node_modules/mout/lang/isKind.js');
     function isNumber(val) {
@@ -8397,6 +8365,214 @@
       exports.Controller = Controller;
     }));
   },
+  './node_modules/scopes/index.js': function (require, module, exports, global) {
+    'use strict';
+    var Syntax = require('./node_modules/esprima/esprima.js').Syntax;
+    var estraverse = require('./node_modules/estraverse/estraverse.js');
+    var escope = require('./node_modules/escope/escope.js');
+    var type = require('./node_modules/typeof/index.js');
+    function Scope(scope) {
+      var references = {};
+      var variables = {};
+      var include = function (reference) {
+        var name = reference.identifier.name;
+        if (!references[name])
+          references[name] = [];
+        references[name].push(reference.identifier);
+      };
+      scope.through.forEach(include);
+      scope.references.forEach(include);
+      scope.variables.forEach(function (v) {
+        variables[v.name] = v.identifiers;
+      });
+      var block = this.node = scope.block;
+      if (scope.type === 'function') {
+        this.body = block.body.body;
+      } else {
+        this.body = block.body;
+      }
+      this.thisFound = scope.thisFound;
+      this.vars = variables;
+      this.refs = references;
+      this.children = [];
+    }
+    Scope.prototype.declares = function (name) {
+      return this.vars[name];
+    };
+    Scope.prototype.references = function (name) {
+      return this.refs[name];
+    };
+    Scope.prototype.traverse = function (visitor) {
+      var self = this;
+      var scopes = self.children;
+      var blocks = scopes.map(function (child) {
+          return child.node;
+        });
+      estraverse.traverse(self.node, {
+        enter: function (node, parent) {
+          var index = blocks.indexOf(node);
+          if (index > -1) {
+            scopes[index].traverse(visitor);
+            this.skip();
+          } else {
+            visitor.call(this, self, node, parent);
+          }
+        }
+      });
+      return this;
+    };
+    Scope.prototype.replace = function (visitor) {
+      var self = this;
+      var scopes = self.children;
+      var blocks = scopes.map(function (child) {
+          return child.node;
+        });
+      estraverse.replace(self.node, {
+        enter: function (node, parent) {
+          var index = blocks.indexOf(node);
+          if (index > -1) {
+            scopes[index].traverse(visitor);
+            this.skip();
+          } else {
+            return visitor.call(this, self, node, parent);
+          }
+        }
+      });
+      return this;
+    };
+    Scope.prototype.loop = function (visitor) {
+      visitor.call(this);
+      this.children.forEach(function (child) {
+        child.loop(visitor);
+      });
+      return this;
+    };
+    Scope.prototype.id = function (name) {
+      var identifier = {
+          type: Syntax.Identifier,
+          name: name
+        };
+      var scope = this;
+      while (scope) {
+        var refs = scope.refs[name] || (scope.refs[name] = []);
+        refs.push(identifier);
+        scope = scope.parent;
+      }
+      return identifier;
+    };
+    Scope.prototype.uniqueId = function (name) {
+      while (this.references(name))
+        name = '_' + name;
+      return this.id(name);
+    };
+    Scope.prototype.sequenceId = function (name) {
+      var i = 1, original = name;
+      while (this.references(name))
+        name = original + i++;
+      return this.id(name);
+    };
+    var declaration = function (scope, identifier, init) {
+      var declarators;
+      if (type(identifier) === 'array') {
+        declarators = identifier;
+      } else {
+        if (type(identifier) === 'string')
+          identifier = scope.id(identifier);
+        declarators = [{
+            type: Syntax.VariableDeclarator,
+            id: identifier,
+            init: init
+          }];
+      }
+      declarators.forEach(function (declarator) {
+        var name = declarator.id.name;
+        var vars = scope.vars[name] || (scope.vars[name] = []);
+        vars.push(declarator.id);
+      });
+      return {
+        type: Syntax.VariableDeclaration,
+        declarations: declarators,
+        kind: 'var'
+      };
+    };
+    Scope.prototype.declareBefore = function (node, identifier, init) {
+      return scopes.insertBefore(this.node, node, declaration(this, identifier, init));
+    };
+    Scope.prototype.declareIn = function (body, index, identifier, init) {
+      return scopes.insertIn(body, index, declaration(this, identifier, init));
+    };
+    Scope.prototype.declareAfter = function (node, identifier, init) {
+      return scopes.insertAfter(this.node, node, declaration(this, identifier, init));
+    };
+    Scope.prototype.declare = function (index, identifier, init) {
+      return scopes.insertIn(this.body, index, declaration(this, identifier, init));
+    };
+    var generate = function (scopeObject, root) {
+      var scopeClass = new Scope(scopeObject);
+      if (!root)
+        root = scopeClass;
+      scopeObject.childScopes.forEach(function (childScopeObject) {
+        var childScopeClass = generate(childScopeObject, root);
+        childScopeClass.parent = scopeClass;
+        scopeClass.children.push(childScopeClass);
+      });
+      scopeClass.root = root;
+      return scopeClass;
+    };
+    var blockIndex = function (root, match) {
+      var index = -1;
+      var parent;
+      estraverse.traverse(root, {
+        enter: function (node) {
+          if (node !== match)
+            return;
+          var parents = this.parents();
+          var matchRoot = node;
+          for (var i = parents.length; i--;) {
+            parent = parents[i];
+            if (type(parent.body) === 'array') {
+              parent = parent.body;
+              break;
+            }
+            if (type(parent.consequent) === 'array') {
+              parent = parent.consequent;
+              break;
+            }
+            matchRoot = parent;
+          }
+          index = parent.indexOf(matchRoot);
+          this.break();
+        }
+      });
+      return [
+        parent,
+        index
+      ];
+    };
+    var scopes = function (tree) {
+      var scopes = escope.analyze(tree, { ignoreEval: true }).scopes;
+      return generate(scopes[0]);
+    };
+    scopes.insertBefore = function (root, match, node) {
+      var bi = blockIndex(root, match);
+      var body = bi[0];
+      var index = bi[1];
+      body.splice(index === -1 ? 0 : index, 0, node);
+      return node;
+    };
+    scopes.insertIn = function (body, index, node) {
+      body.splice(index === -1 ? 0 : index, 0, node);
+      return node;
+    };
+    scopes.insertAfter = function (root, match, node) {
+      var bi = blockIndex(root, match);
+      var body = bi[0];
+      var index = bi[1];
+      body.splice(index + 1, 0, node);
+      return node;
+    };
+    module.exports = scopes;
+  },
   './node_modules/escodegen/node_modules/esutils/lib/utils.js': function (require, module, exports, global) {
     (function () {
       'use strict';
@@ -8686,6 +8862,12 @@
     }
     module.exports = makeIterator;
   },
+  './node_modules/mout/lang/toString.js': function (require, module, exports, global) {
+    function toString(val) {
+      return val == null ? '' : val.toString();
+    }
+    module.exports = toString;
+  },
   './node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
     module.exports = [
       ' ',
@@ -8714,12 +8896,6 @@
       '\u205F',
       '\u3000'
     ];
-  },
-  './node_modules/mout/lang/toString.js': function (require, module, exports, global) {
-    function toString(val) {
-      return val == null ? '' : val.toString();
-    }
-    module.exports = toString;
   },
   './node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
     var toString = require('./node_modules/mout/lang/toString.js');
@@ -10220,6 +10396,45 @@
     };
     module.exports = parse;
   },
+  './node_modules/mout/lang/kindOf.js': function (require, module, exports, global) {
+    var _rKind = /^\[object (.*)\]$/, _toString = Object.prototype.toString, UNDEF;
+    function kindOf(val) {
+      if (val === null) {
+        return 'Null';
+      } else if (val === UNDEF) {
+        return 'Undefined';
+      } else {
+        return _rKind.exec(_toString.call(val))[1];
+      }
+    }
+    module.exports = kindOf;
+  },
+  './node_modules/prime/node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
+    var hasOwn = require('./node_modules/prime/node_modules/mout/object/hasOwn.js');
+    var forIn = require('./node_modules/prime/node_modules/mout/object/forIn.js');
+    function forOwn(obj, fn, thisObj) {
+      forIn(obj, function (val, key) {
+        if (hasOwn(obj, key)) {
+          return fn.call(thisObj, obj[key], key, obj);
+        }
+      });
+    }
+    module.exports = forOwn;
+  },
+  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
+    function identity(val) {
+      return val;
+    }
+    module.exports = identity;
+  },
+  './node_modules/mout/function/prop.js': function (require, module, exports, global) {
+    function prop(name) {
+      return function (obj) {
+        return obj[name];
+      };
+    }
+    module.exports = prop;
+  },
   './node_modules/escope/escope.js': function (require, module, exports, global) {
     (function (factory, global) {
       'use strict';
@@ -10919,45 +11134,6 @@
       }
       return type.toLowerCase();
     };
-  },
-  './node_modules/mout/lang/kindOf.js': function (require, module, exports, global) {
-    var _rKind = /^\[object (.*)\]$/, _toString = Object.prototype.toString, UNDEF;
-    function kindOf(val) {
-      if (val === null) {
-        return 'Null';
-      } else if (val === UNDEF) {
-        return 'Undefined';
-      } else {
-        return _rKind.exec(_toString.call(val))[1];
-      }
-    }
-    module.exports = kindOf;
-  },
-  './node_modules/prime/node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
-    var hasOwn = require('./node_modules/prime/node_modules/mout/object/hasOwn.js');
-    var forIn = require('./node_modules/prime/node_modules/mout/object/forIn.js');
-    function forOwn(obj, fn, thisObj) {
-      forIn(obj, function (val, key) {
-        if (hasOwn(obj, key)) {
-          return fn.call(thisObj, obj[key], key, obj);
-        }
-      });
-    }
-    module.exports = forOwn;
-  },
-  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
-    function identity(val) {
-      return val;
-    }
-    module.exports = identity;
-  },
-  './node_modules/mout/function/prop.js': function (require, module, exports, global) {
-    function prop(name) {
-      return function (obj) {
-        return obj[name];
-      };
-    }
-    module.exports = prop;
   },
   './node_modules/mout/object/deepMatches.js': function (require, module, exports, global) {
     var forOwn = require('./node_modules/mout/object/forOwn.js');
