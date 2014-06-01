@@ -444,7 +444,7 @@
               nestedId = scope.uniqueId(valueId.name + i);
               declarations.push(create(nestedId, member));
             }
-            destructPattern(scope, declarations, nestedId, element, assignment);
+            destructPattern(scope, declarations, nestedId, element, asAssignment);
           }
         });
       } else if (pattern.type === Syntax.ObjectPattern) {
@@ -467,7 +467,7 @@
               nestedId = scope.uniqueId(property.key.name);
               declarations.push(create(nestedId, member));
             }
-            destructPattern(scope, declarations, nestedId, property.value, assignment);
+            destructPattern(scope, declarations, nestedId, property.value, asAssignment);
           }
         });
       }
@@ -8376,7 +8376,7 @@
       var variables = {};
       var include = function (reference) {
         var name = reference.identifier.name;
-        if (!references[name])
+        if (!references.hasOwnProperty(name))
           references[name] = [];
         references[name].push(reference.identifier);
       };
@@ -8397,10 +8397,12 @@
       this.children = [];
     }
     Scope.prototype.declares = function (name) {
-      return this.vars[name];
+      var vars = this.vars;
+      return vars.hasOwnProperty(name) ? vars[name] : null;
     };
     Scope.prototype.references = function (name) {
-      return this.refs[name];
+      var refs = this.refs;
+      return refs.hasOwnProperty(name) ? refs[name] : null;
     };
     Scope.prototype.traverse = function (visitor) {
       var self = this;
@@ -8454,8 +8456,10 @@
         };
       var scope = this;
       while (scope) {
-        var refs = scope.refs[name] || (scope.refs[name] = []);
-        refs.push(identifier);
+        var refs = scope.refs;
+        if (!refs.hasOwnProperty(name))
+          refs[name] = [];
+        refs[name].push(identifier);
         scope = scope.parent;
       }
       return identifier;
@@ -8486,8 +8490,10 @@
       }
       declarators.forEach(function (declarator) {
         var name = declarator.id.name;
-        var vars = scope.vars[name] || (scope.vars[name] = []);
-        vars.push(declarator.id);
+        var vars = scope.vars;
+        if (!vars.hasOwnProperty(name))
+          vars[name] = [];
+        vars[name].push(declarator.id);
       });
       return {
         type: Syntax.VariableDeclaration,
@@ -10409,6 +10415,12 @@
     }
     module.exports = kindOf;
   },
+  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
+    function identity(val) {
+      return val;
+    }
+    module.exports = identity;
+  },
   './node_modules/prime/node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('./node_modules/prime/node_modules/mout/object/hasOwn.js');
     var forIn = require('./node_modules/prime/node_modules/mout/object/forIn.js');
@@ -10421,12 +10433,6 @@
     }
     module.exports = forOwn;
   },
-  './node_modules/mout/function/identity.js': function (require, module, exports, global) {
-    function identity(val) {
-      return val;
-    }
-    module.exports = identity;
-  },
   './node_modules/mout/function/prop.js': function (require, module, exports, global) {
     function prop(name) {
       return function (obj) {
@@ -10434,6 +10440,21 @@
       };
     }
     module.exports = prop;
+  },
+  './node_modules/typeof/index.js': function (require, module, exports, global) {
+    var toString = Object.prototype.toString;
+    module.exports = function (object) {
+      var type = typeof object;
+      if (type === 'undefined') {
+        return 'undefined';
+      }
+      if (object) {
+        type = object.constructor.name;
+      } else if (type === 'object') {
+        type = toString.call(object).slice(8, -1);
+      }
+      return type.toLowerCase();
+    };
   },
   './node_modules/escope/escope.js': function (require, module, exports, global) {
     (function (factory, global) {
@@ -11119,21 +11140,6 @@
       exports.ScopeManager = ScopeManager;
       exports.analyze = analyze;
     }, this));
-  },
-  './node_modules/typeof/index.js': function (require, module, exports, global) {
-    var toString = Object.prototype.toString;
-    module.exports = function (object) {
-      var type = typeof object;
-      if (type === 'undefined') {
-        return 'undefined';
-      }
-      if (object) {
-        type = object.constructor.name;
-      } else if (type === 'object') {
-        type = toString.call(object).slice(8, -1);
-      }
-      return type.toLowerCase();
-    };
   },
   './node_modules/mout/object/deepMatches.js': function (require, module, exports, global) {
     var forOwn = require('./node_modules/mout/object/forOwn.js');
