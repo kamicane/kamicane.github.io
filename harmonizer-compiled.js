@@ -249,2628 +249,6 @@
       return null;
     };
   },
-  './node_modules/elements/index.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('./node_modules/elements/base.js');
-    require('./node_modules/elements/attributes.js');
-    require('./node_modules/elements/events.js');
-    require('./node_modules/elements/insertion.js');
-    require('./node_modules/elements/traversal.js');
-    require('./node_modules/elements/delegation.js');
-    module.exports = $;
-  },
-  './node_modules/quickstart-next/index.js': function (require, module, exports, global) {
-    'use strict';
-    var esprima = require('./node_modules/esprima/esprima.js');
-    var Syntax = esprima.Syntax;
-    var estraverse = require('./node_modules/estraverse/estraverse.js');
-    var scopes = require('./node_modules/scopes/index.js');
-    var forEachRight = function (list, visitor, ctx) {
-      for (var i = list.length; i--;) {
-        visitor.call(ctx, list[i], i, list);
-      }
-    };
-    var define = function (obj, key, value) {
-      Object.defineProperty(obj, key, {
-        enumerable: false,
-        configurable: true,
-        writable: true,
-        value: value
-      });
-      return value;
-    };
-    var expression = function (string) {
-      return esprima.parse(string).body[0].expression;
-    };
-    var getUndefined = function (scope) {
-      if (!scope.undefinedId) {
-        scope.undefinedId = scope.uniqueId('undefined');
-        scope.undefinedNode = scope.declare(0, scope.undefinedId, {
-          type: Syntax.UnaryExpression,
-          operator: 'void',
-          argument: {
-            type: Syntax.Literal,
-            value: 0
-          },
-          prefix: true
-        });
-      }
-      return {
-        id: scope.undefinedId,
-        node: scope.undefinedNode
-      };
-    };
-    var getSelf = function (scope) {
-      if (!scope.selfId) {
-        scope.selfId = scope.uniqueId('self');
-        scope.selfNode = scope.declare(0, scope.selfId, { type: Syntax.ThisExpression });
-      }
-      return {
-        id: scope.selfId,
-        node: scope.selfNode
-      };
-    };
-    var getSlice = function (scope) {
-      if (!scope.sliceId) {
-        scope.sliceId = scope.uniqueId('slice');
-        scope.sliceNode = scope.declare(0, scope.sliceId, expression('Array.prototype.slice'));
-      }
-      return {
-        id: scope.sliceId,
-        node: scope.sliceNode
-      };
-    };
-    var getCreate = function (scope) {
-      if (!scope.createId) {
-        scope.createId = scope.uniqueId('create');
-        scope.createNode = scope.declare(0, scope.createId, expression('Object.create'));
-      }
-      return {
-        id: scope.createId,
-        node: scope.createNode
-      };
-    };
-    var getIsArray = function (scope) {
-      if (!scope.isArrayId) {
-        scope.isArrayId = scope.uniqueId('isArray');
-        scope.isArrayNode = scope.declare(0, scope.isArrayId, expression('Array.isArray'));
-      }
-      return {
-        id: scope.isArrayId,
-        node: scope.isArrayNode
-      };
-    };
-    var getApply = function (scope) {
-      if (!scope.applyId) {
-        var create = getCreate(scope);
-        scope.applyId = scope.uniqueId('apply');
-        scope.applyNode = scope.declare(scope.body.indexOf(create.node) + 1, scope.applyId, expression('(function(constructor, rest) {' + 'var self = ' + create.id.name + '(constructor.prototype);' + 'constructor.apply(self, rest);' + 'return self;' + '})'));
-      }
-      return {
-        id: scope.applyId,
-        node: scope.applyNode
-      };
-    };
-    var getToArray = function (scope) {
-      if (!scope.toArrayId) {
-        var slice = getSlice(scope);
-        var isArray = getIsArray(scope);
-        var index = Math.max(scope.body.indexOf(slice.node), scope.body.indexOf(isArray.node)) + 1;
-        scope.toArrayId = scope.uniqueId('toArray');
-        scope.toArrayNode = scope.declare(index, scope.toArrayId, expression('(function(list) {' + 'return (' + isArray.id.name + '(list)) ? list : ' + slice.id.name + '.call(list);' + '})'));
-      }
-      return {
-        id: scope.toArrayId,
-        node: scope.toArrayNode
-      };
-    };
-    var createCallExpression = function (functionId, nodes) {
-      return {
-        type: Syntax.CallExpression,
-        callee: functionId,
-        arguments: nodes
-      };
-    };
-    var createDeclarator = function (id, init) {
-      return {
-        type: Syntax.VariableDeclarator,
-        id: id,
-        init: init
-      };
-    };
-    var createAssignment = function (left, right) {
-      return {
-        type: Syntax.AssignmentExpression,
-        operator: '=',
-        left: left,
-        right: right
-      };
-    };
-    var createSliceCallExpression = function (sliceId, node, length) {
-      var sliceCall = {
-          type: Syntax.CallExpression,
-          callee: {
-            type: Syntax.MemberExpression,
-            computed: false,
-            object: sliceId,
-            property: {
-              type: Syntax.Identifier,
-              name: 'call'
-            }
-          },
-          arguments: [node]
-        };
-      if (length > 0) {
-        sliceCall.arguments.push({
-          type: Syntax.Literal,
-          value: length
-        });
-      }
-      return sliceCall;
-    };
-    var numbers = [
-        'zero',
-        'one',
-        'two',
-        'three',
-        'four',
-        'five',
-        'six',
-        'seven',
-        'eight',
-        'nine',
-        'ten'
-      ];
-    var transformForOf = function (scope, node) {
-      node.type = Syntax.ForStatement;
-      var body = node.body.body;
-      var right = node.right;
-      delete node.right;
-      var left = node.left;
-      delete node.left;
-      if (right.type !== Syntax.Identifier) {
-        var rightId = scope.uniqueId('object');
-        scope.declareBefore(node, rightId, right);
-        right = rightId;
-      }
-      var iteratorId = scope.uniqueId('iterator');
-      var nextId = scope.uniqueId('next');
-      node.init = {
-        type: Syntax.VariableDeclaration,
-        declarations: [],
-        kind: 'var'
-      };
-      scope.declareOn(node.init, [
-        {
-          type: Syntax.VariableDeclarator,
-          id: iteratorId,
-          init: {
-            type: Syntax.CallExpression,
-            callee: {
-              type: Syntax.MemberExpression,
-              computed: true,
-              object: right,
-              property: {
-                type: Syntax.Literal,
-                value: '@@iterator'
-              }
-            },
-            arguments: []
-          }
-        },
-        {
-          type: Syntax.VariableDeclarator,
-          id: nextId,
-          init: null
-        }
-      ]);
-      node.test = {
-        type: Syntax.UnaryExpression,
-        operator: '!',
-        argument: {
-          type: Syntax.MemberExpression,
-          computed: false,
-          object: {
-            type: Syntax.AssignmentExpression,
-            operator: '=',
-            left: nextId,
-            right: {
-              type: Syntax.CallExpression,
-              callee: {
-                type: Syntax.MemberExpression,
-                computed: false,
-                object: iteratorId,
-                property: {
-                  type: Syntax.Identifier,
-                  name: 'next'
-                }
-              },
-              arguments: []
-            }
-          },
-          property: {
-            type: Syntax.Identifier,
-            name: 'done'
-          }
-        },
-        prefix: true
-      };
-      node.update = null;
-      if (left.type === Syntax.VariableDeclaration) {
-        var declaration = scope.declareIn(body, 0, left.declarations[0].id, {
-            type: Syntax.MemberExpression,
-            computed: false,
-            object: nextId,
-            property: {
-              type: Syntax.Identifier,
-              name: 'value'
-            }
-          });
-        transformPatternDeclaration(scope, declaration);
-      }
-    };
-    var destructPattern = function (scope, declarations, valueId, pattern, asAssignment) {
-      var create = asAssignment ? createAssignment : createDeclarator;
-      if (pattern.type === Syntax.ArrayPattern) {
-        pattern.elements.forEach(function (element, i) {
-          if (element == null)
-            return;
-          var member = valueId ? {
-              type: Syntax.MemberExpression,
-              computed: true,
-              object: valueId,
-              property: {
-                type: Syntax.Literal,
-                value: i
-              }
-            } : null;
-          if (element.type === Syntax.Identifier) {
-            declarations.push(create(element, member));
-          } else {
-            var nestedId;
-            if (valueId) {
-              nestedId = scope.uniqueId(valueId.name + i);
-              scope.declareBefore(pattern, nestedId, member);
-            }
-            destructPattern(scope, declarations, nestedId, element, asAssignment);
-          }
-        });
-      } else if (pattern.type === Syntax.ObjectPattern) {
-        pattern.properties.forEach(function (property) {
-          var member = valueId ? {
-              type: Syntax.MemberExpression,
-              computed: false,
-              object: valueId,
-              property: {
-                type: Syntax.Identifier,
-                name: property.key.name
-              }
-            } : null;
-          var value = property.value;
-          if (value.type === Syntax.Identifier) {
-            declarations.push(create(value, member));
-          } else {
-            var nestedId;
-            if (valueId) {
-              nestedId = scope.uniqueId(property.key.name);
-              scope.declareBefore(pattern, nestedId, member);
-            }
-            destructPattern(scope, declarations, nestedId, property.value, asAssignment);
-          }
-        });
-      }
-      return declarations;
-    };
-    var transformPatternForIn = function (scope, node) {
-      var block = node.body.body;
-      var declarations = node.left.declarations;
-      var pattern = declarations[0].id;
-      var keyId = scope.uniqueId('key');
-      declarations[0].id = keyId;
-      var rightId;
-      if (node.right.type !== Syntax.Identifier) {
-        rightId = scope.uniqueId('object');
-        scope.declareBefore(node, rightId, node.right);
-        node.right = rightId;
-      } else {
-        rightId = node.right;
-      }
-      var declaration = scope.declareIn(block, 0, pattern, {
-          type: Syntax.ArrayExpression,
-          elements: [
-            keyId,
-            {
-              type: Syntax.MemberExpression,
-              computed: true,
-              object: rightId,
-              property: keyId
-            }
-          ]
-        });
-      transformPatternDeclaration(scope, declaration);
-    };
-    var transformPatternExpression = function (scope, node) {
-      node.expression = {
-        type: Syntax.SequenceExpression,
-        expressions: [node.expression]
-      };
-      transformPatternSequence(scope, node.expression);
-    };
-    var transformPatternSequence = function (scope, node) {
-      forEachRight(node.expressions, function (expression, i) {
-        var left = expression.left;
-        var right = expression.right;
-        if (left.type !== Syntax.ArrayPattern && left.type !== Syntax.ObjectPattern)
-          return;
-        var valueId;
-        if (right.type === Syntax.Identifier) {
-          valueId = right;
-        } else {
-          valueId = scope.uniqueId('pattern');
-          scope.declareBefore(node, valueId, right);
-        }
-        var assignments = destructPattern(scope, [], valueId, left, true);
-        node.expressions.splice.apply(node.expressions, [
-          i,
-          1
-        ].concat(assignments));
-      });
-    };
-    var transformPatternParams = function (scope, node) {
-      forEachRight(node.params, function (param, i) {
-        if (param.type !== Syntax.ArrayPattern && param.type !== Syntax.ObjectPattern)
-          return;
-        var newId = scope.uniqueId('pattern');
-        node.params.splice(i, 1, newId);
-        var declarators = destructPattern(scope, [], newId, param);
-        scope.declare(0, declarators);
-      });
-    };
-    var transformPatternDeclaration = function (scope, node) {
-      forEachRight(node.declarations, function (declarator, i) {
-        var pattern = declarator.id;
-        if (pattern.type !== Syntax.ArrayPattern && pattern.type !== Syntax.ObjectPattern)
-          return;
-        var declarators;
-        if (declarator.init == null) {
-          declarators = destructPattern(scope, [], null, pattern);
-        } else {
-          var valueId;
-          if (declarator.init.type === Syntax.Identifier) {
-            valueId = declarator.init;
-          } else {
-            valueId = scope.uniqueId('pattern');
-            scope.declareBefore(node, valueId, declarator.init);
-          }
-          declarators = destructPattern(scope, [], valueId, pattern);
-        }
-        node.declarations.splice.apply(node.declarations, [
-          i,
-          1
-        ].concat(declarators));
-      });
-    };
-    var transformThis = function (scope, node) {
-      node.type = Syntax.Identifier;
-      node.name = getSelf(scope).id.name;
-    };
-    var transformSpread = function (scope, node, spreadElement) {
-      var root = scope.root;
-      var args = node.type === Syntax.ArrayExpression ? node.elements : node.arguments;
-      var argument = spreadElement.argument;
-      if (argument.type === Syntax.ArrayExpression) {
-        args.push.apply(args, argument.elements);
-        return;
-      }
-      var length = args.length;
-      if (length > 0) {
-        var concat = {
-            type: Syntax.CallExpression,
-            callee: {
-              type: Syntax.MemberExpression,
-              computed: false,
-              object: {
-                type: Syntax.ArrayExpression,
-                elements: []
-              },
-              property: {
-                type: Syntax.Identifier,
-                name: 'concat'
-              }
-            },
-            arguments: []
-          };
-        for (var i = 0; i < length; i++) {
-          var arg = args[i];
-          concat.callee.object.elements.push(arg);
-        }
-        if (!~scope.arrays.indexOf(argument.name)) {
-          argument = createCallExpression(getToArray(root).id, [argument]);
-        }
-        concat.arguments.push(argument);
-        argument = concat;
-        args.splice(0, length, argument);
-      } else {
-        args.push(argument);
-      }
-      if (node.type === Syntax.CallExpression) {
-        if (node.callee.type !== Syntax.MemberExpression) {
-          args.unshift({
-            type: Syntax.Literal,
-            value: null
-          });
-        } else {
-          var object = node.callee.object;
-          if (object.type !== Syntax.Identifier) {
-            var contextId = scope.sequenceId('context');
-            scope.declareBefore(node, contextId, node.callee.object);
-            node.callee.object = contextId;
-          }
-          args.unshift(object);
-        }
-        node.callee = {
-          type: Syntax.MemberExpression,
-          computed: false,
-          object: node.callee,
-          property: {
-            type: Syntax.Identifier,
-            name: 'apply'
-          }
-        };
-      } else if (node.type === Syntax.NewExpression) {
-        node.type = Syntax.CallExpression;
-        node.arguments.unshift(node.callee);
-        node.callee = getApply(root).id;
-      } else if (node.type === Syntax.ArrayExpression) {
-        if (length > 0) {
-          node.type = Syntax.CallExpression;
-          node.callee = argument.callee;
-          node.arguments = argument.arguments;
-        } else {
-          argument = createSliceCallExpression(getSlice(root).id, argument, 0);
-          node.type = Syntax.CallExpression;
-          node.callee = argument.callee;
-          node.arguments = argument.arguments;
-        }
-      }
-    };
-    var transformRest = function (scope, node, rest) {
-      var params = node.params;
-      scope.declare(0, rest, createSliceCallExpression(getSlice(scope.root).id, {
-        type: Syntax.Identifier,
-        name: 'arguments'
-      }, params.length));
-    };
-    var transformDefaults = function (scope, node, defaults) {
-      var root = scope.root;
-      var params = node.params;
-      var broken;
-      forEachRight(defaults, function (defaultParam, i) {
-        if (defaultParam && broken)
-          throw new Error('only trailing parameters can have defaults');
-        if (!defaultParam)
-          return broken = true;
-        defaults.splice(i, 1);
-        var param = params.splice(i, 1)[0];
-        var undefinedId = getUndefined(root).id;
-        var argumentId = scope.uniqueId(numbers[i] || '_' + i);
-        scope.declare(0, param, {
-          type: Syntax.ConditionalExpression,
-          test: {
-            type: Syntax.BinaryExpression,
-            operator: '===',
-            left: argumentId,
-            right: undefinedId
-          },
-          consequent: defaultParam,
-          alternate: argumentId
-        });
-        scope.declare(0, argumentId, {
-          type: Syntax.MemberExpression,
-          computed: true,
-          object: {
-            type: Syntax.Identifier,
-            name: 'arguments'
-          },
-          property: {
-            type: Syntax.Literal,
-            value: i
-          }
-        });
-      });
-    };
-    var traverseScopes = function (root, result) {
-      root.traverse(function (scope, node) {
-        if (!scope.arrays)
-          scope.arrays = [];
-        var uid = node.uid;
-        var functions = result.functions;
-        var arrowElements = functions.arrow;
-        if (arrowElements[scope.node.uid] && node.type === Syntax.ThisExpression) {
-          var parentScope = scope.parent;
-          while (arrowElements[parentScope.node.uid])
-            parentScope = parentScope.parent;
-          transformThis(parentScope, node);
-        }
-        var defaultsElement = functions.defaults[uid];
-        if (defaultsElement) {
-          transformDefaults(scope, node, defaultsElement);
-        }
-        var patternParamsElement = functions.pattern[uid];
-        if (patternParamsElement) {
-          transformPatternParams(scope, node);
-        }
-        var restElement = functions.rest[uid];
-        if (restElement) {
-          if (!scope.references(restElement.name)) {
-            scope.arrays.push(restElement.name);
-          }
-          transformRest(scope, node, restElement);
-        }
-        var spreadElement = result.spread[uid];
-        if (spreadElement) {
-          transformSpread(scope, node, spreadElement);
-        }
-        var patternForInElement = result.pattern.forIn[uid];
-        if (patternForInElement) {
-          transformPatternForIn(scope, node);
-        }
-        var forOfElement = result.forOf[uid];
-        if (forOfElement) {
-          transformForOf(scope, node);
-        }
-        var patternDeclarationElement = result.pattern.declaration[uid];
-        if (patternDeclarationElement) {
-          transformPatternDeclaration(scope, node);
-        }
-        var patternSequenceElement = result.pattern.sequence[uid];
-        if (patternSequenceElement) {
-          transformPatternSequence(scope, node);
-        }
-        var patternExpressionElement = result.pattern.expression[uid];
-        if (patternExpressionElement) {
-          transformPatternExpression(scope, node);
-        }
-      });
-    };
-    var normalizeSpread = function (collection) {
-      var lastIndex = collection.length - 1;
-      var spreadElement = collection[lastIndex];
-      if (spreadElement && spreadElement.type === Syntax.SpreadElement) {
-        collection.splice(lastIndex, 1);
-        return spreadElement;
-      }
-      return null;
-    };
-    var normalizeArrowFunction = function (node) {
-      if (node.expression) {
-        node.expression = false;
-        node.body = {
-          type: Syntax.BlockStatement,
-          body: [{
-              type: Syntax.ReturnStatement,
-              argument: node.body
-            }]
-        };
-      }
-      node.type = Syntax.FunctionExpression;
-      return node;
-    };
-    var UID = 0;
-    var normalize = function (tree) {
-      var result = {
-          functions: {
-            arrow: {},
-            defaults: {},
-            rest: {},
-            pattern: {}
-          },
-          spread: {},
-          forOf: {},
-          pattern: {
-            declaration: {},
-            sequence: {},
-            expression: {},
-            forIn: {}
-          }
-        };
-      estraverse.traverse(tree, {
-        enter: function (node, parent) {
-          var uid = define(node, 'uid', (UID++).toString(36));
-          var i;
-          var functions = result.functions;
-          if (node.type === Syntax.ArrowFunctionExpression) {
-            functions.arrow[uid] = node;
-            normalizeArrowFunction(node);
-          }
-          if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
-            if (node.rest) {
-              functions.rest[uid] = node.rest;
-              node.rest = null;
-            }
-            if (node.defaults && node.defaults.length) {
-              functions.defaults[uid] = node.defaults;
-              node.defaults = [];
-            }
-            for (i = 0; i < node.params.length; i++) {
-              var param = node.params[i];
-              if (param.type === Syntax.ArrayPattern || param.type === Syntax.ObjectPattern) {
-                functions.pattern[uid] = node;
-                break;
-              }
-            }
-          }
-          var spreadNode;
-          if (node.type === Syntax.CallExpression || node.type === Syntax.NewExpression) {
-            spreadNode = normalizeSpread(node.arguments);
-          } else if (node.type === Syntax.ArrayExpression) {
-            spreadNode = normalizeSpread(node.elements);
-          }
-          if (spreadNode)
-            result.spread[uid] = spreadNode;
-          if (node.type === Syntax.ForInStatement && node.left.type === Syntax.VariableDeclaration) {
-            var pattern = node.left.declarations[0].id;
-            if (pattern.type === Syntax.ObjectPattern || pattern.type === Syntax.ArrayPattern) {
-              result.pattern.forIn[uid] = node;
-            }
-          } else if (node.type === Syntax.ForOfStatement) {
-            node.type = Syntax.ForInStatement;
-            result.forOf[uid] = node;
-          }
-          if (node.type === Syntax.VariableDeclaration && parent.type !== Syntax.ForInStatement) {
-            for (i = 0; i < node.declarations.length; i++) {
-              var declarator = node.declarations[i];
-              if (declarator.id.type === Syntax.ArrayPattern || declarator.id.type === Syntax.ObjectPattern) {
-                result.pattern.declaration[uid] = node;
-                break;
-              }
-            }
-          }
-          if (node.type === Syntax.ExpressionStatement && node.expression.type === Syntax.AssignmentExpression) {
-            if (node.expression.left.type === Syntax.ArrayPattern || node.expression.left.type === Syntax.ObjectPattern) {
-              result.pattern.expression[uid] = node;
-            }
-          }
-          if (node.type === Syntax.SequenceExpression) {
-            for (i = 0; i < node.expressions.length; i++) {
-              var expression = node.expressions[i];
-              if (expression.left.type === Syntax.ArrayPattern || expression.left.type === Syntax.ObjectPattern) {
-                result.pattern.sequence[uid] = node;
-                break;
-              }
-            }
-          }
-          if (node.type === Syntax.ObjectExpression || node.type === Syntax.ObjectPattern) {
-            node.properties.forEach(function (property) {
-              if (property.shorthand)
-                property.shorthand = false;
-              if (property.method)
-                property.method = false;
-            });
-          }
-          if (node.type === Syntax.IfStatement) {
-            if (node.consequent.type !== Syntax.BlockStatement) {
-              node.consequent = {
-                type: Syntax.BlockStatement,
-                body: [node.consequent]
-              };
-            }
-            if (node.alternate && node.alternate.type !== Syntax.BlockStatement) {
-              node.alternate = {
-                type: Syntax.BlockStatement,
-                body: [node.alternate]
-              };
-            }
-          }
-          if ((node.type === Syntax.ForStatement || node.type === Syntax.ForInStatement || node.type === Syntax.WhileStatement || node.type === Syntax.DoWhileStatement || node.type === Syntax.LabeledStatement) && node.body.type !== Syntax.BlockStatement) {
-            node.body = {
-              type: Syntax.BlockStatement,
-              body: [node.body]
-            };
-          }
-        }
-      });
-      console.warn('and yes');
-      return result;
-    };
-    var transform = function (tree) {
-      var result = normalize(tree);
-      var root = scopes(tree);
-      traverseScopes(root, result);
-      return tree;
-    };
-    transform.transforms = [function (path, tree) {
-        return transform(tree);
-      }];
-    module.exports = transform;
-  },
-  './node_modules/escodegen/escodegen.js': function (require, module, exports, global) {
-    (function () {
-      'use strict';
-      var Syntax, Precedence, BinaryPrecedence, SourceNode, estraverse, esutils, isArray, base, indent, json, renumber, hexadecimal, quotes, escapeless, newline, space, parentheses, semicolons, safeConcatenation, directive, extra, parse, sourceMap, FORMAT_MINIFY, FORMAT_DEFAULTS;
-      estraverse = require('./node_modules/estraverse/estraverse.js');
-      esutils = require('./node_modules/escodegen/node_modules/esutils/lib/utils.js');
-      Syntax = {
-        AssignmentExpression: 'AssignmentExpression',
-        ArrayExpression: 'ArrayExpression',
-        ArrayPattern: 'ArrayPattern',
-        ArrowFunctionExpression: 'ArrowFunctionExpression',
-        BlockStatement: 'BlockStatement',
-        BinaryExpression: 'BinaryExpression',
-        BreakStatement: 'BreakStatement',
-        CallExpression: 'CallExpression',
-        CatchClause: 'CatchClause',
-        ComprehensionBlock: 'ComprehensionBlock',
-        ComprehensionExpression: 'ComprehensionExpression',
-        ConditionalExpression: 'ConditionalExpression',
-        ContinueStatement: 'ContinueStatement',
-        DirectiveStatement: 'DirectiveStatement',
-        DoWhileStatement: 'DoWhileStatement',
-        DebuggerStatement: 'DebuggerStatement',
-        EmptyStatement: 'EmptyStatement',
-        ExportDeclaration: 'ExportDeclaration',
-        ExpressionStatement: 'ExpressionStatement',
-        ForStatement: 'ForStatement',
-        ForInStatement: 'ForInStatement',
-        ForOfStatement: 'ForOfStatement',
-        FunctionDeclaration: 'FunctionDeclaration',
-        FunctionExpression: 'FunctionExpression',
-        GeneratorExpression: 'GeneratorExpression',
-        Identifier: 'Identifier',
-        IfStatement: 'IfStatement',
-        Literal: 'Literal',
-        LabeledStatement: 'LabeledStatement',
-        LogicalExpression: 'LogicalExpression',
-        MemberExpression: 'MemberExpression',
-        NewExpression: 'NewExpression',
-        ObjectExpression: 'ObjectExpression',
-        ObjectPattern: 'ObjectPattern',
-        Program: 'Program',
-        Property: 'Property',
-        ReturnStatement: 'ReturnStatement',
-        SequenceExpression: 'SequenceExpression',
-        SwitchStatement: 'SwitchStatement',
-        SwitchCase: 'SwitchCase',
-        ThisExpression: 'ThisExpression',
-        ThrowStatement: 'ThrowStatement',
-        TryStatement: 'TryStatement',
-        UnaryExpression: 'UnaryExpression',
-        UpdateExpression: 'UpdateExpression',
-        VariableDeclaration: 'VariableDeclaration',
-        VariableDeclarator: 'VariableDeclarator',
-        WhileStatement: 'WhileStatement',
-        WithStatement: 'WithStatement',
-        YieldExpression: 'YieldExpression'
-      };
-      Precedence = {
-        Sequence: 0,
-        Yield: 1,
-        Assignment: 1,
-        Conditional: 2,
-        ArrowFunction: 2,
-        LogicalOR: 3,
-        LogicalAND: 4,
-        BitwiseOR: 5,
-        BitwiseXOR: 6,
-        BitwiseAND: 7,
-        Equality: 8,
-        Relational: 9,
-        BitwiseSHIFT: 10,
-        Additive: 11,
-        Multiplicative: 12,
-        Unary: 13,
-        Postfix: 14,
-        Call: 15,
-        New: 16,
-        Member: 17,
-        Primary: 18
-      };
-      BinaryPrecedence = {
-        '||': Precedence.LogicalOR,
-        '&&': Precedence.LogicalAND,
-        '|': Precedence.BitwiseOR,
-        '^': Precedence.BitwiseXOR,
-        '&': Precedence.BitwiseAND,
-        '==': Precedence.Equality,
-        '!=': Precedence.Equality,
-        '===': Precedence.Equality,
-        '!==': Precedence.Equality,
-        'is': Precedence.Equality,
-        'isnt': Precedence.Equality,
-        '<': Precedence.Relational,
-        '>': Precedence.Relational,
-        '<=': Precedence.Relational,
-        '>=': Precedence.Relational,
-        'in': Precedence.Relational,
-        'instanceof': Precedence.Relational,
-        '<<': Precedence.BitwiseSHIFT,
-        '>>': Precedence.BitwiseSHIFT,
-        '>>>': Precedence.BitwiseSHIFT,
-        '+': Precedence.Additive,
-        '-': Precedence.Additive,
-        '*': Precedence.Multiplicative,
-        '%': Precedence.Multiplicative,
-        '/': Precedence.Multiplicative
-      };
-      function getDefaultOptions() {
-        return {
-          indent: null,
-          base: null,
-          parse: null,
-          comment: false,
-          format: {
-            indent: {
-              style: '    ',
-              base: 0,
-              adjustMultilineComment: false
-            },
-            newline: '\n',
-            space: ' ',
-            json: false,
-            renumber: false,
-            hexadecimal: false,
-            quotes: 'single',
-            escapeless: false,
-            compact: false,
-            parentheses: true,
-            semicolons: true,
-            safeConcatenation: false
-          },
-          moz: {
-            comprehensionExpressionStartsWithAssignment: false,
-            starlessGenerator: false,
-            parenthesizedComprehensionBlock: false
-          },
-          sourceMap: null,
-          sourceMapRoot: null,
-          sourceMapWithCode: false,
-          directive: false,
-          raw: true,
-          verbatim: null
-        };
-      }
-      function stringRepeat(str, num) {
-        var result = '';
-        for (num |= 0; num > 0; num >>>= 1, str += str) {
-          if (num & 1) {
-            result += str;
-          }
-        }
-        return result;
-      }
-      isArray = Array.isArray;
-      if (!isArray) {
-        isArray = function isArray(array) {
-          return Object.prototype.toString.call(array) === '[object Array]';
-        };
-      }
-      function hasLineTerminator(str) {
-        return /[\r\n]/g.test(str);
-      }
-      function endsWithLineTerminator(str) {
-        var len = str.length;
-        return len && esutils.code.isLineTerminator(str.charCodeAt(len - 1));
-      }
-      function updateDeeply(target, override) {
-        var key, val;
-        function isHashObject(target) {
-          return typeof target === 'object' && target instanceof Object && !(target instanceof RegExp);
-        }
-        for (key in override) {
-          if (override.hasOwnProperty(key)) {
-            val = override[key];
-            if (isHashObject(val)) {
-              if (isHashObject(target[key])) {
-                updateDeeply(target[key], val);
-              } else {
-                target[key] = updateDeeply({}, val);
-              }
-            } else {
-              target[key] = val;
-            }
-          }
-        }
-        return target;
-      }
-      function generateNumber(value) {
-        var result, point, temp, exponent, pos;
-        if (value !== value) {
-          throw new Error('Numeric literal whose value is NaN');
-        }
-        if (value < 0 || value === 0 && 1 / value < 0) {
-          throw new Error('Numeric literal whose value is negative');
-        }
-        if (value === 1 / 0) {
-          return json ? 'null' : renumber ? '1e400' : '1e+400';
-        }
-        result = '' + value;
-        if (!renumber || result.length < 3) {
-          return result;
-        }
-        point = result.indexOf('.');
-        if (!json && result.charCodeAt(0) === 48 && point === 1) {
-          point = 0;
-          result = result.slice(1);
-        }
-        temp = result;
-        result = result.replace('e+', 'e');
-        exponent = 0;
-        if ((pos = temp.indexOf('e')) > 0) {
-          exponent = +temp.slice(pos + 1);
-          temp = temp.slice(0, pos);
-        }
-        if (point >= 0) {
-          exponent -= temp.length - point - 1;
-          temp = +(temp.slice(0, point) + temp.slice(point + 1)) + '';
-        }
-        pos = 0;
-        while (temp.charCodeAt(temp.length + pos - 1) === 48) {
-          --pos;
-        }
-        if (pos !== 0) {
-          exponent -= pos;
-          temp = temp.slice(0, pos);
-        }
-        if (exponent !== 0) {
-          temp += 'e' + exponent;
-        }
-        if ((temp.length < result.length || hexadecimal && value > 1000000000000 && Math.floor(value) === value && (temp = '0x' + value.toString(16)).length < result.length) && +temp === value) {
-          result = temp;
-        }
-        return result;
-      }
-      function escapeRegExpCharacter(ch, previousIsBackslash) {
-        if ((ch & ~1) === 8232) {
-          return (previousIsBackslash ? 'u' : '\\u') + (ch === 8232 ? '2028' : '2029');
-        } else if (ch === 10 || ch === 13) {
-          return (previousIsBackslash ? '' : '\\') + (ch === 10 ? 'n' : 'r');
-        }
-        return String.fromCharCode(ch);
-      }
-      function generateRegExp(reg) {
-        var match, result, flags, i, iz, ch, characterInBrack, previousIsBackslash;
-        result = reg.toString();
-        if (reg.source) {
-          match = result.match(/\/([^/]*)$/);
-          if (!match) {
-            return result;
-          }
-          flags = match[1];
-          result = '';
-          characterInBrack = false;
-          previousIsBackslash = false;
-          for (i = 0, iz = reg.source.length; i < iz; ++i) {
-            ch = reg.source.charCodeAt(i);
-            if (!previousIsBackslash) {
-              if (characterInBrack) {
-                if (ch === 93) {
-                  characterInBrack = false;
-                }
-              } else {
-                if (ch === 47) {
-                  result += '\\';
-                } else if (ch === 91) {
-                  characterInBrack = true;
-                }
-              }
-              result += escapeRegExpCharacter(ch, previousIsBackslash);
-              previousIsBackslash = ch === 92;
-            } else {
-              result += escapeRegExpCharacter(ch, previousIsBackslash);
-              previousIsBackslash = false;
-            }
-          }
-          return '/' + result + '/' + flags;
-        }
-        return result;
-      }
-      function escapeAllowedCharacter(code, next) {
-        var hex, result = '\\';
-        switch (code) {
-        case 8:
-          result += 'b';
-          break;
-        case 12:
-          result += 'f';
-          break;
-        case 9:
-          result += 't';
-          break;
-        default:
-          hex = code.toString(16).toUpperCase();
-          if (json || code > 255) {
-            result += 'u' + '0000'.slice(hex.length) + hex;
-          } else if (code === 0 && !esutils.code.isDecimalDigit(next)) {
-            result += '0';
-          } else if (code === 11) {
-            result += 'x0B';
-          } else {
-            result += 'x' + '00'.slice(hex.length) + hex;
-          }
-          break;
-        }
-        return result;
-      }
-      function escapeDisallowedCharacter(code) {
-        var result = '\\';
-        switch (code) {
-        case 92:
-          result += '\\';
-          break;
-        case 10:
-          result += 'n';
-          break;
-        case 13:
-          result += 'r';
-          break;
-        case 8232:
-          result += 'u2028';
-          break;
-        case 8233:
-          result += 'u2029';
-          break;
-        default:
-          throw new Error('Incorrectly classified character');
-        }
-        return result;
-      }
-      function escapeDirective(str) {
-        var i, iz, code, quote;
-        quote = quotes === 'double' ? '"' : '\'';
-        for (i = 0, iz = str.length; i < iz; ++i) {
-          code = str.charCodeAt(i);
-          if (code === 39) {
-            quote = '"';
-            break;
-          } else if (code === 34) {
-            quote = '\'';
-            break;
-          } else if (code === 92) {
-            ++i;
-          }
-        }
-        return quote + str + quote;
-      }
-      function escapeString(str) {
-        var result = '', i, len, code, singleQuotes = 0, doubleQuotes = 0, single, quote;
-        for (i = 0, len = str.length; i < len; ++i) {
-          code = str.charCodeAt(i);
-          if (code === 39) {
-            ++singleQuotes;
-          } else if (code === 34) {
-            ++doubleQuotes;
-          } else if (code === 47 && json) {
-            result += '\\';
-          } else if (esutils.code.isLineTerminator(code) || code === 92) {
-            result += escapeDisallowedCharacter(code);
-            continue;
-          } else if (json && code < 32 || !(json || escapeless || code >= 32 && code <= 126)) {
-            result += escapeAllowedCharacter(code, str.charCodeAt(i + 1));
-            continue;
-          }
-          result += String.fromCharCode(code);
-        }
-        single = !(quotes === 'double' || quotes === 'auto' && doubleQuotes < singleQuotes);
-        quote = single ? '\'' : '"';
-        if (!(single ? singleQuotes : doubleQuotes)) {
-          return quote + result + quote;
-        }
-        str = result;
-        result = quote;
-        for (i = 0, len = str.length; i < len; ++i) {
-          code = str.charCodeAt(i);
-          if (code === 39 && single || code === 34 && !single) {
-            result += '\\';
-          }
-          result += String.fromCharCode(code);
-        }
-        return result + quote;
-      }
-      function flattenToString(arr) {
-        var i, iz, elem, result = '';
-        for (i = 0, iz = arr.length; i < iz; ++i) {
-          elem = arr[i];
-          result += isArray(elem) ? flattenToString(elem) : elem;
-        }
-        return result;
-      }
-      function toSourceNodeWhenNeeded(generated, node) {
-        if (!sourceMap) {
-          if (isArray(generated)) {
-            return flattenToString(generated);
-          } else {
-            return generated;
-          }
-        }
-        if (node == null) {
-          if (generated instanceof SourceNode) {
-            return generated;
-          } else {
-            node = {};
-          }
-        }
-        if (node.loc == null) {
-          return new SourceNode(null, null, sourceMap, generated, node.name || null);
-        }
-        return new SourceNode(node.loc.start.line, node.loc.start.column, sourceMap === true ? node.loc.source || null : sourceMap, generated, node.name || null);
-      }
-      function noEmptySpace() {
-        return space ? space : ' ';
-      }
-      function join(left, right) {
-        var leftSource = toSourceNodeWhenNeeded(left).toString(), rightSource = toSourceNodeWhenNeeded(right).toString(), leftCharCode = leftSource.charCodeAt(leftSource.length - 1), rightCharCode = rightSource.charCodeAt(0);
-        if ((leftCharCode === 43 || leftCharCode === 45) && leftCharCode === rightCharCode || esutils.code.isIdentifierPart(leftCharCode) && esutils.code.isIdentifierPart(rightCharCode) || leftCharCode === 47 && rightCharCode === 105) {
-          return [
-            left,
-            noEmptySpace(),
-            right
-          ];
-        } else if (esutils.code.isWhiteSpace(leftCharCode) || esutils.code.isLineTerminator(leftCharCode) || esutils.code.isWhiteSpace(rightCharCode) || esutils.code.isLineTerminator(rightCharCode)) {
-          return [
-            left,
-            right
-          ];
-        }
-        return [
-          left,
-          space,
-          right
-        ];
-      }
-      function addIndent(stmt) {
-        return [
-          base,
-          stmt
-        ];
-      }
-      function withIndent(fn) {
-        var previousBase, result;
-        previousBase = base;
-        base += indent;
-        result = fn.call(this, base);
-        base = previousBase;
-        return result;
-      }
-      function calculateSpaces(str) {
-        var i;
-        for (i = str.length - 1; i >= 0; --i) {
-          if (esutils.code.isLineTerminator(str.charCodeAt(i))) {
-            break;
-          }
-        }
-        return str.length - 1 - i;
-      }
-      function adjustMultilineComment(value, specialBase) {
-        var array, i, len, line, j, spaces, previousBase, sn;
-        array = value.split(/\r\n|[\r\n]/);
-        spaces = Number.MAX_VALUE;
-        for (i = 1, len = array.length; i < len; ++i) {
-          line = array[i];
-          j = 0;
-          while (j < line.length && esutils.code.isWhiteSpace(line.charCodeAt(j))) {
-            ++j;
-          }
-          if (spaces > j) {
-            spaces = j;
-          }
-        }
-        if (typeof specialBase !== 'undefined') {
-          previousBase = base;
-          if (array[1][spaces] === '*') {
-            specialBase += ' ';
-          }
-          base = specialBase;
-        } else {
-          if (spaces & 1) {
-            --spaces;
-          }
-          previousBase = base;
-        }
-        for (i = 1, len = array.length; i < len; ++i) {
-          sn = toSourceNodeWhenNeeded(addIndent(array[i].slice(spaces)));
-          array[i] = sourceMap ? sn.join('') : sn;
-        }
-        base = previousBase;
-        return array.join('\n');
-      }
-      function generateComment(comment, specialBase) {
-        if (comment.type === 'Line') {
-          if (endsWithLineTerminator(comment.value)) {
-            return '//' + comment.value;
-          } else {
-            return '//' + comment.value + '\n';
-          }
-        }
-        if (extra.format.indent.adjustMultilineComment && /[\n\r]/.test(comment.value)) {
-          return adjustMultilineComment('/*' + comment.value + '*/', specialBase);
-        }
-        return '/*' + comment.value + '*/';
-      }
-      function addComments(stmt, result) {
-        var i, len, comment, save, tailingToStatement, specialBase, fragment;
-        if (stmt.leadingComments && stmt.leadingComments.length > 0) {
-          save = result;
-          comment = stmt.leadingComments[0];
-          result = [];
-          if (safeConcatenation && stmt.type === Syntax.Program && stmt.body.length === 0) {
-            result.push('\n');
-          }
-          result.push(generateComment(comment));
-          if (!endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-            result.push('\n');
-          }
-          for (i = 1, len = stmt.leadingComments.length; i < len; ++i) {
-            comment = stmt.leadingComments[i];
-            fragment = [generateComment(comment)];
-            if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-              fragment.push('\n');
-            }
-            result.push(addIndent(fragment));
-          }
-          result.push(addIndent(save));
-        }
-        if (stmt.trailingComments) {
-          tailingToStatement = !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString());
-          specialBase = stringRepeat(' ', calculateSpaces(toSourceNodeWhenNeeded([
-            base,
-            result,
-            indent
-          ]).toString()));
-          for (i = 0, len = stmt.trailingComments.length; i < len; ++i) {
-            comment = stmt.trailingComments[i];
-            if (tailingToStatement) {
-              if (i === 0) {
-                result = [
-                  result,
-                  indent
-                ];
-              } else {
-                result = [
-                  result,
-                  specialBase
-                ];
-              }
-              result.push(generateComment(comment, specialBase));
-            } else {
-              result = [
-                result,
-                addIndent(generateComment(comment))
-              ];
-            }
-            if (i !== len - 1 && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-              result = [
-                result,
-                '\n'
-              ];
-            }
-          }
-        }
-        return result;
-      }
-      function parenthesize(text, current, should) {
-        if (current < should) {
-          return [
-            '(',
-            text,
-            ')'
-          ];
-        }
-        return text;
-      }
-      function maybeBlock(stmt, semicolonOptional, functionBody) {
-        var result, noLeadingComment;
-        noLeadingComment = !extra.comment || !stmt.leadingComments;
-        if (stmt.type === Syntax.BlockStatement && noLeadingComment) {
-          return [
-            space,
-            generateStatement(stmt, { functionBody: functionBody })
-          ];
-        }
-        if (stmt.type === Syntax.EmptyStatement && noLeadingComment) {
-          return ';';
-        }
-        withIndent(function () {
-          result = [
-            newline,
-            addIndent(generateStatement(stmt, {
-              semicolonOptional: semicolonOptional,
-              functionBody: functionBody
-            }))
-          ];
-        });
-        return result;
-      }
-      function maybeBlockSuffix(stmt, result) {
-        var ends = endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString());
-        if (stmt.type === Syntax.BlockStatement && (!extra.comment || !stmt.leadingComments) && !ends) {
-          return [
-            result,
-            space
-          ];
-        }
-        if (ends) {
-          return [
-            result,
-            base
-          ];
-        }
-        return [
-          result,
-          newline,
-          base
-        ];
-      }
-      function generateVerbatimString(string) {
-        var i, iz, result;
-        result = string.split(/\r\n|\n/);
-        for (i = 1, iz = result.length; i < iz; i++) {
-          result[i] = newline + base + result[i];
-        }
-        return result;
-      }
-      function generateVerbatim(expr, option) {
-        var verbatim, result, prec;
-        verbatim = expr[extra.verbatim];
-        if (typeof verbatim === 'string') {
-          result = parenthesize(generateVerbatimString(verbatim), Precedence.Sequence, option.precedence);
-        } else {
-          result = generateVerbatimString(verbatim.content);
-          prec = verbatim.precedence != null ? verbatim.precedence : Precedence.Sequence;
-          result = parenthesize(result, prec, option.precedence);
-        }
-        return toSourceNodeWhenNeeded(result, expr);
-      }
-      function generateIdentifier(node) {
-        return toSourceNodeWhenNeeded(node.name, node);
-      }
-      function generatePattern(node, options) {
-        var result;
-        if (node.type === Syntax.Identifier) {
-          result = generateIdentifier(node);
-        } else {
-          result = generateExpression(node, {
-            precedence: options.precedence,
-            allowIn: options.allowIn,
-            allowCall: true
-          });
-        }
-        return result;
-      }
-      function generateFunctionBody(node) {
-        var result, i, len, expr, arrow;
-        arrow = node.type === Syntax.ArrowFunctionExpression;
-        if (arrow && node.params.length === 1 && node.params[0].type === Syntax.Identifier) {
-          result = [generateIdentifier(node.params[0])];
-        } else {
-          result = ['('];
-          for (i = 0, len = node.params.length; i < len; ++i) {
-            result.push(generatePattern(node.params[i], {
-              precedence: Precedence.Assignment,
-              allowIn: true
-            }));
-            if (i + 1 < len) {
-              result.push(',' + space);
-            }
-          }
-          result.push(')');
-        }
-        if (arrow) {
-          result.push(space);
-          result.push('=>');
-        }
-        if (node.expression) {
-          result.push(space);
-          expr = generateExpression(node.body, {
-            precedence: Precedence.Assignment,
-            allowIn: true,
-            allowCall: true
-          });
-          if (expr.toString().charAt(0) === '{') {
-            expr = [
-              '(',
-              expr,
-              ')'
-            ];
-          }
-          result.push(expr);
-        } else {
-          result.push(maybeBlock(node.body, false, true));
-        }
-        return result;
-      }
-      function generateIterationForStatement(operator, stmt, semicolonIsNotNeeded) {
-        var result = ['for' + space + '('];
-        withIndent(function () {
-          if (stmt.left.type === Syntax.VariableDeclaration) {
-            withIndent(function () {
-              result.push(stmt.left.kind + noEmptySpace());
-              result.push(generateStatement(stmt.left.declarations[0], { allowIn: false }));
-            });
-          } else {
-            result.push(generateExpression(stmt.left, {
-              precedence: Precedence.Call,
-              allowIn: true,
-              allowCall: true
-            }));
-          }
-          result = join(result, operator);
-          result = [
-            join(result, generateExpression(stmt.right, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true
-            })),
-            ')'
-          ];
-        });
-        result.push(maybeBlock(stmt.body, semicolonIsNotNeeded));
-        return result;
-      }
-      function generateExpression(expr, option) {
-        var result, precedence, type, currentPrecedence, i, len, raw, fragment, multiline, leftCharCode, leftSource, rightCharCode, allowIn, allowCall, allowUnparenthesizedNew, property, isGenerator;
-        precedence = option.precedence;
-        allowIn = option.allowIn;
-        allowCall = option.allowCall;
-        type = expr.type || option.type;
-        if (extra.verbatim && expr.hasOwnProperty(extra.verbatim)) {
-          return generateVerbatim(expr, option);
-        }
-        switch (type) {
-        case Syntax.SequenceExpression:
-          result = [];
-          allowIn |= Precedence.Sequence < precedence;
-          for (i = 0, len = expr.expressions.length; i < len; ++i) {
-            result.push(generateExpression(expr.expressions[i], {
-              precedence: Precedence.Assignment,
-              allowIn: allowIn,
-              allowCall: true
-            }));
-            if (i + 1 < len) {
-              result.push(',' + space);
-            }
-          }
-          result = parenthesize(result, Precedence.Sequence, precedence);
-          break;
-        case Syntax.AssignmentExpression:
-          allowIn |= Precedence.Assignment < precedence;
-          result = parenthesize([
-            generateExpression(expr.left, {
-              precedence: Precedence.Call,
-              allowIn: allowIn,
-              allowCall: true
-            }),
-            space + expr.operator + space,
-            generateExpression(expr.right, {
-              precedence: Precedence.Assignment,
-              allowIn: allowIn,
-              allowCall: true
-            })
-          ], Precedence.Assignment, precedence);
-          break;
-        case Syntax.ArrowFunctionExpression:
-          allowIn |= Precedence.ArrowFunction < precedence;
-          result = parenthesize(generateFunctionBody(expr), Precedence.ArrowFunction, precedence);
-          break;
-        case Syntax.ConditionalExpression:
-          allowIn |= Precedence.Conditional < precedence;
-          result = parenthesize([
-            generateExpression(expr.test, {
-              precedence: Precedence.LogicalOR,
-              allowIn: allowIn,
-              allowCall: true
-            }),
-            space + '?' + space,
-            generateExpression(expr.consequent, {
-              precedence: Precedence.Assignment,
-              allowIn: allowIn,
-              allowCall: true
-            }),
-            space + ':' + space,
-            generateExpression(expr.alternate, {
-              precedence: Precedence.Assignment,
-              allowIn: allowIn,
-              allowCall: true
-            })
-          ], Precedence.Conditional, precedence);
-          break;
-        case Syntax.LogicalExpression:
-        case Syntax.BinaryExpression:
-          currentPrecedence = BinaryPrecedence[expr.operator];
-          allowIn |= currentPrecedence < precedence;
-          fragment = generateExpression(expr.left, {
-            precedence: currentPrecedence,
-            allowIn: allowIn,
-            allowCall: true
-          });
-          leftSource = fragment.toString();
-          if (leftSource.charCodeAt(leftSource.length - 1) === 47 && esutils.code.isIdentifierPart(expr.operator.charCodeAt(0))) {
-            result = [
-              fragment,
-              noEmptySpace(),
-              expr.operator
-            ];
-          } else {
-            result = join(fragment, expr.operator);
-          }
-          fragment = generateExpression(expr.right, {
-            precedence: currentPrecedence + 1,
-            allowIn: allowIn,
-            allowCall: true
-          });
-          if (expr.operator === '/' && fragment.toString().charAt(0) === '/' || expr.operator.slice(-1) === '<' && fragment.toString().slice(0, 3) === '!--') {
-            result.push(noEmptySpace());
-            result.push(fragment);
-          } else {
-            result = join(result, fragment);
-          }
-          if (expr.operator === 'in' && !allowIn) {
-            result = [
-              '(',
-              result,
-              ')'
-            ];
-          } else {
-            result = parenthesize(result, currentPrecedence, precedence);
-          }
-          break;
-        case Syntax.CallExpression:
-          result = [generateExpression(expr.callee, {
-              precedence: Precedence.Call,
-              allowIn: true,
-              allowCall: true,
-              allowUnparenthesizedNew: false
-            })];
-          result.push('(');
-          for (i = 0, len = expr['arguments'].length; i < len; ++i) {
-            result.push(generateExpression(expr['arguments'][i], {
-              precedence: Precedence.Assignment,
-              allowIn: true,
-              allowCall: true
-            }));
-            if (i + 1 < len) {
-              result.push(',' + space);
-            }
-          }
-          result.push(')');
-          if (!allowCall) {
-            result = [
-              '(',
-              result,
-              ')'
-            ];
-          } else {
-            result = parenthesize(result, Precedence.Call, precedence);
-          }
-          break;
-        case Syntax.NewExpression:
-          len = expr['arguments'].length;
-          allowUnparenthesizedNew = option.allowUnparenthesizedNew === undefined || option.allowUnparenthesizedNew;
-          result = join('new', generateExpression(expr.callee, {
-            precedence: Precedence.New,
-            allowIn: true,
-            allowCall: false,
-            allowUnparenthesizedNew: allowUnparenthesizedNew && !parentheses && len === 0
-          }));
-          if (!allowUnparenthesizedNew || parentheses || len > 0) {
-            result.push('(');
-            for (i = 0; i < len; ++i) {
-              result.push(generateExpression(expr['arguments'][i], {
-                precedence: Precedence.Assignment,
-                allowIn: true,
-                allowCall: true
-              }));
-              if (i + 1 < len) {
-                result.push(',' + space);
-              }
-            }
-            result.push(')');
-          }
-          result = parenthesize(result, Precedence.New, precedence);
-          break;
-        case Syntax.MemberExpression:
-          result = [generateExpression(expr.object, {
-              precedence: Precedence.Call,
-              allowIn: true,
-              allowCall: allowCall,
-              allowUnparenthesizedNew: false
-            })];
-          if (expr.computed) {
-            result.push('[');
-            result.push(generateExpression(expr.property, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: allowCall
-            }));
-            result.push(']');
-          } else {
-            if (expr.object.type === Syntax.Literal && typeof expr.object.value === 'number') {
-              fragment = toSourceNodeWhenNeeded(result).toString();
-              if (fragment.indexOf('.') < 0 && !/[eExX]/.test(fragment) && esutils.code.isDecimalDigit(fragment.charCodeAt(fragment.length - 1)) && !(fragment.length >= 2 && fragment.charCodeAt(0) === 48)) {
-                result.push('.');
-              }
-            }
-            result.push('.');
-            result.push(generateIdentifier(expr.property));
-          }
-          result = parenthesize(result, Precedence.Member, precedence);
-          break;
-        case Syntax.UnaryExpression:
-          fragment = generateExpression(expr.argument, {
-            precedence: Precedence.Unary,
-            allowIn: true,
-            allowCall: true
-          });
-          if (space === '') {
-            result = join(expr.operator, fragment);
-          } else {
-            result = [expr.operator];
-            if (expr.operator.length > 2) {
-              result = join(result, fragment);
-            } else {
-              leftSource = toSourceNodeWhenNeeded(result).toString();
-              leftCharCode = leftSource.charCodeAt(leftSource.length - 1);
-              rightCharCode = fragment.toString().charCodeAt(0);
-              if ((leftCharCode === 43 || leftCharCode === 45) && leftCharCode === rightCharCode || esutils.code.isIdentifierPart(leftCharCode) && esutils.code.isIdentifierPart(rightCharCode)) {
-                result.push(noEmptySpace());
-                result.push(fragment);
-              } else {
-                result.push(fragment);
-              }
-            }
-          }
-          result = parenthesize(result, Precedence.Unary, precedence);
-          break;
-        case Syntax.YieldExpression:
-          if (expr.delegate) {
-            result = 'yield*';
-          } else {
-            result = 'yield';
-          }
-          if (expr.argument) {
-            result = join(result, generateExpression(expr.argument, {
-              precedence: Precedence.Yield,
-              allowIn: true,
-              allowCall: true
-            }));
-          }
-          result = parenthesize(result, Precedence.Yield, precedence);
-          break;
-        case Syntax.UpdateExpression:
-          if (expr.prefix) {
-            result = parenthesize([
-              expr.operator,
-              generateExpression(expr.argument, {
-                precedence: Precedence.Unary,
-                allowIn: true,
-                allowCall: true
-              })
-            ], Precedence.Unary, precedence);
-          } else {
-            result = parenthesize([
-              generateExpression(expr.argument, {
-                precedence: Precedence.Postfix,
-                allowIn: true,
-                allowCall: true
-              }),
-              expr.operator
-            ], Precedence.Postfix, precedence);
-          }
-          break;
-        case Syntax.FunctionExpression:
-          isGenerator = expr.generator && !extra.moz.starlessGenerator;
-          result = isGenerator ? 'function*' : 'function';
-          if (expr.id) {
-            result = [
-              result,
-              isGenerator ? space : noEmptySpace(),
-              generateIdentifier(expr.id),
-              generateFunctionBody(expr)
-            ];
-          } else {
-            result = [
-              result + space,
-              generateFunctionBody(expr)
-            ];
-          }
-          break;
-        case Syntax.ArrayPattern:
-        case Syntax.ArrayExpression:
-          if (!expr.elements.length) {
-            result = '[]';
-            break;
-          }
-          multiline = expr.elements.length > 1;
-          result = [
-            '[',
-            multiline ? newline : ''
-          ];
-          withIndent(function (indent) {
-            for (i = 0, len = expr.elements.length; i < len; ++i) {
-              if (!expr.elements[i]) {
-                if (multiline) {
-                  result.push(indent);
-                }
-                if (i + 1 === len) {
-                  result.push(',');
-                }
-              } else {
-                result.push(multiline ? indent : '');
-                result.push(generateExpression(expr.elements[i], {
-                  precedence: Precedence.Assignment,
-                  allowIn: true,
-                  allowCall: true
-                }));
-              }
-              if (i + 1 < len) {
-                result.push(',' + (multiline ? newline : space));
-              }
-            }
-          });
-          if (multiline && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-            result.push(newline);
-          }
-          result.push(multiline ? base : '');
-          result.push(']');
-          break;
-        case Syntax.Property:
-          if (expr.kind === 'get' || expr.kind === 'set') {
-            result = [
-              expr.kind,
-              noEmptySpace(),
-              generateExpression(expr.key, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              generateFunctionBody(expr.value)
-            ];
-          } else {
-            if (expr.shorthand) {
-              result = generateExpression(expr.key, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              });
-            } else if (expr.method) {
-              result = [];
-              if (expr.value.generator) {
-                result.push('*');
-              }
-              result.push(generateExpression(expr.key, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }));
-              result.push(generateFunctionBody(expr.value));
-            } else {
-              result = [
-                generateExpression(expr.key, {
-                  precedence: Precedence.Sequence,
-                  allowIn: true,
-                  allowCall: true
-                }),
-                ':' + space,
-                generateExpression(expr.value, {
-                  precedence: Precedence.Assignment,
-                  allowIn: true,
-                  allowCall: true
-                })
-              ];
-            }
-          }
-          break;
-        case Syntax.ObjectExpression:
-          if (!expr.properties.length) {
-            result = '{}';
-            break;
-          }
-          multiline = expr.properties.length > 1;
-          withIndent(function () {
-            fragment = generateExpression(expr.properties[0], {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true,
-              type: Syntax.Property
-            });
-          });
-          if (!multiline) {
-            if (!hasLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-              result = [
-                '{',
-                space,
-                fragment,
-                space,
-                '}'
-              ];
-              break;
-            }
-          }
-          withIndent(function (indent) {
-            result = [
-              '{',
-              newline,
-              indent,
-              fragment
-            ];
-            if (multiline) {
-              result.push(',' + newline);
-              for (i = 1, len = expr.properties.length; i < len; ++i) {
-                result.push(indent);
-                result.push(generateExpression(expr.properties[i], {
-                  precedence: Precedence.Sequence,
-                  allowIn: true,
-                  allowCall: true,
-                  type: Syntax.Property
-                }));
-                if (i + 1 < len) {
-                  result.push(',' + newline);
-                }
-              }
-            }
-          });
-          if (!endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-            result.push(newline);
-          }
-          result.push(base);
-          result.push('}');
-          break;
-        case Syntax.ObjectPattern:
-          if (!expr.properties.length) {
-            result = '{}';
-            break;
-          }
-          multiline = false;
-          if (expr.properties.length === 1) {
-            property = expr.properties[0];
-            if (property.value.type !== Syntax.Identifier) {
-              multiline = true;
-            }
-          } else {
-            for (i = 0, len = expr.properties.length; i < len; ++i) {
-              property = expr.properties[i];
-              if (!property.shorthand) {
-                multiline = true;
-                break;
-              }
-            }
-          }
-          result = [
-            '{',
-            multiline ? newline : ''
-          ];
-          withIndent(function (indent) {
-            for (i = 0, len = expr.properties.length; i < len; ++i) {
-              result.push(multiline ? indent : '');
-              result.push(generateExpression(expr.properties[i], {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }));
-              if (i + 1 < len) {
-                result.push(',' + (multiline ? newline : space));
-              }
-            }
-          });
-          if (multiline && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-            result.push(newline);
-          }
-          result.push(multiline ? base : '');
-          result.push('}');
-          break;
-        case Syntax.ThisExpression:
-          result = 'this';
-          break;
-        case Syntax.Identifier:
-          result = generateIdentifier(expr);
-          break;
-        case Syntax.Literal:
-          if (expr.hasOwnProperty('raw') && parse && extra.raw) {
-            try {
-              raw = parse(expr.raw).body[0].expression;
-              if (raw.type === Syntax.Literal) {
-                if (raw.value === expr.value) {
-                  result = expr.raw;
-                  break;
-                }
-              }
-            } catch (e) {
-            }
-          }
-          if (expr.value === null) {
-            result = 'null';
-            break;
-          }
-          if (typeof expr.value === 'string') {
-            result = escapeString(expr.value);
-            break;
-          }
-          if (typeof expr.value === 'number') {
-            result = generateNumber(expr.value);
-            break;
-          }
-          if (typeof expr.value === 'boolean') {
-            result = expr.value ? 'true' : 'false';
-            break;
-          }
-          result = generateRegExp(expr.value);
-          break;
-        case Syntax.GeneratorExpression:
-        case Syntax.ComprehensionExpression:
-          result = type === Syntax.GeneratorExpression ? ['('] : ['['];
-          if (extra.moz.comprehensionExpressionStartsWithAssignment) {
-            fragment = generateExpression(expr.body, {
-              precedence: Precedence.Assignment,
-              allowIn: true,
-              allowCall: true
-            });
-            result.push(fragment);
-          }
-          if (expr.blocks) {
-            withIndent(function () {
-              for (i = 0, len = expr.blocks.length; i < len; ++i) {
-                fragment = generateExpression(expr.blocks[i], {
-                  precedence: Precedence.Sequence,
-                  allowIn: true,
-                  allowCall: true
-                });
-                if (i > 0 || extra.moz.comprehensionExpressionStartsWithAssignment) {
-                  result = join(result, fragment);
-                } else {
-                  result.push(fragment);
-                }
-              }
-            });
-          }
-          if (expr.filter) {
-            result = join(result, 'if' + space);
-            fragment = generateExpression(expr.filter, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true
-            });
-            if (extra.moz.parenthesizedComprehensionBlock) {
-              result = join(result, [
-                '(',
-                fragment,
-                ')'
-              ]);
-            } else {
-              result = join(result, fragment);
-            }
-          }
-          if (!extra.moz.comprehensionExpressionStartsWithAssignment) {
-            fragment = generateExpression(expr.body, {
-              precedence: Precedence.Assignment,
-              allowIn: true,
-              allowCall: true
-            });
-            result = join(result, fragment);
-          }
-          result.push(type === Syntax.GeneratorExpression ? ')' : ']');
-          break;
-        case Syntax.ComprehensionBlock:
-          if (expr.left.type === Syntax.VariableDeclaration) {
-            fragment = [
-              expr.left.kind,
-              noEmptySpace(),
-              generateStatement(expr.left.declarations[0], { allowIn: false })
-            ];
-          } else {
-            fragment = generateExpression(expr.left, {
-              precedence: Precedence.Call,
-              allowIn: true,
-              allowCall: true
-            });
-          }
-          fragment = join(fragment, expr.of ? 'of' : 'in');
-          fragment = join(fragment, generateExpression(expr.right, {
-            precedence: Precedence.Sequence,
-            allowIn: true,
-            allowCall: true
-          }));
-          if (extra.moz.parenthesizedComprehensionBlock) {
-            result = [
-              'for' + space + '(',
-              fragment,
-              ')'
-            ];
-          } else {
-            result = join('for' + space, fragment);
-          }
-          break;
-        default:
-          throw new Error('Unknown expression type: ' + expr.type);
-        }
-        if (extra.comment) {
-          result = addComments(expr, result);
-        }
-        return toSourceNodeWhenNeeded(result, expr);
-      }
-      function generateStatement(stmt, option) {
-        var i, len, result, node, allowIn, functionBody, directiveContext, fragment, semicolon, isGenerator;
-        allowIn = true;
-        semicolon = ';';
-        functionBody = false;
-        directiveContext = false;
-        if (option) {
-          allowIn = option.allowIn === undefined || option.allowIn;
-          if (!semicolons && option.semicolonOptional === true) {
-            semicolon = '';
-          }
-          functionBody = option.functionBody;
-          directiveContext = option.directiveContext;
-        }
-        switch (stmt.type) {
-        case Syntax.BlockStatement:
-          result = [
-            '{',
-            newline
-          ];
-          withIndent(function () {
-            for (i = 0, len = stmt.body.length; i < len; ++i) {
-              fragment = addIndent(generateStatement(stmt.body[i], {
-                semicolonOptional: i === len - 1,
-                directiveContext: functionBody
-              }));
-              result.push(fragment);
-              if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-                result.push(newline);
-              }
-            }
-          });
-          result.push(addIndent('}'));
-          break;
-        case Syntax.BreakStatement:
-          if (stmt.label) {
-            result = 'break ' + stmt.label.name + semicolon;
-          } else {
-            result = 'break' + semicolon;
-          }
-          break;
-        case Syntax.ContinueStatement:
-          if (stmt.label) {
-            result = 'continue ' + stmt.label.name + semicolon;
-          } else {
-            result = 'continue' + semicolon;
-          }
-          break;
-        case Syntax.DirectiveStatement:
-          if (extra.raw && stmt.raw) {
-            result = stmt.raw + semicolon;
-          } else {
-            result = escapeDirective(stmt.directive) + semicolon;
-          }
-          break;
-        case Syntax.DoWhileStatement:
-          result = join('do', maybeBlock(stmt.body));
-          result = maybeBlockSuffix(stmt.body, result);
-          result = join(result, [
-            'while' + space + '(',
-            generateExpression(stmt.test, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true
-            }),
-            ')' + semicolon
-          ]);
-          break;
-        case Syntax.CatchClause:
-          withIndent(function () {
-            var guard;
-            result = [
-              'catch' + space + '(',
-              generateExpression(stmt.param, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              ')'
-            ];
-            if (stmt.guard) {
-              guard = generateExpression(stmt.guard, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              });
-              result.splice(2, 0, ' if ', guard);
-            }
-          });
-          result.push(maybeBlock(stmt.body));
-          break;
-        case Syntax.DebuggerStatement:
-          result = 'debugger' + semicolon;
-          break;
-        case Syntax.EmptyStatement:
-          result = ';';
-          break;
-        case Syntax.ExportDeclaration:
-          result = 'export ';
-          if (stmt.declaration) {
-            result = [
-              result,
-              generateStatement(stmt.declaration, { semicolonOptional: semicolon === '' })
-            ];
-            break;
-          }
-          break;
-        case Syntax.ExpressionStatement:
-          result = [generateExpression(stmt.expression, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true
-            })];
-          fragment = toSourceNodeWhenNeeded(result).toString();
-          if (fragment.charAt(0) === '{' || fragment.slice(0, 8) === 'function' && '* ('.indexOf(fragment.charAt(8)) >= 0 || directive && directiveContext && stmt.expression.type === Syntax.Literal && typeof stmt.expression.value === 'string') {
-            result = [
-              '(',
-              result,
-              ')' + semicolon
-            ];
-          } else {
-            result.push(semicolon);
-          }
-          break;
-        case Syntax.VariableDeclarator:
-          if (stmt.init) {
-            result = [
-              generateExpression(stmt.id, {
-                precedence: Precedence.Assignment,
-                allowIn: allowIn,
-                allowCall: true
-              }),
-              space,
-              '=',
-              space,
-              generateExpression(stmt.init, {
-                precedence: Precedence.Assignment,
-                allowIn: allowIn,
-                allowCall: true
-              })
-            ];
-          } else {
-            result = generatePattern(stmt.id, {
-              precedence: Precedence.Assignment,
-              allowIn: allowIn
-            });
-          }
-          break;
-        case Syntax.VariableDeclaration:
-          result = [stmt.kind];
-          if (stmt.declarations.length === 1 && stmt.declarations[0].init && stmt.declarations[0].init.type === Syntax.FunctionExpression) {
-            result.push(noEmptySpace());
-            result.push(generateStatement(stmt.declarations[0], { allowIn: allowIn }));
-          } else {
-            withIndent(function () {
-              node = stmt.declarations[0];
-              if (extra.comment && node.leadingComments) {
-                result.push('\n');
-                result.push(addIndent(generateStatement(node, { allowIn: allowIn })));
-              } else {
-                result.push(noEmptySpace());
-                result.push(generateStatement(node, { allowIn: allowIn }));
-              }
-              for (i = 1, len = stmt.declarations.length; i < len; ++i) {
-                node = stmt.declarations[i];
-                if (extra.comment && node.leadingComments) {
-                  result.push(',' + newline);
-                  result.push(addIndent(generateStatement(node, { allowIn: allowIn })));
-                } else {
-                  result.push(',' + space);
-                  result.push(generateStatement(node, { allowIn: allowIn }));
-                }
-              }
-            });
-          }
-          result.push(semicolon);
-          break;
-        case Syntax.ThrowStatement:
-          result = [
-            join('throw', generateExpression(stmt.argument, {
-              precedence: Precedence.Sequence,
-              allowIn: true,
-              allowCall: true
-            })),
-            semicolon
-          ];
-          break;
-        case Syntax.TryStatement:
-          result = [
-            'try',
-            maybeBlock(stmt.block)
-          ];
-          result = maybeBlockSuffix(stmt.block, result);
-          if (stmt.handlers) {
-            for (i = 0, len = stmt.handlers.length; i < len; ++i) {
-              result = join(result, generateStatement(stmt.handlers[i]));
-              if (stmt.finalizer || i + 1 !== len) {
-                result = maybeBlockSuffix(stmt.handlers[i].body, result);
-              }
-            }
-          } else {
-            stmt.guardedHandlers = stmt.guardedHandlers || [];
-            for (i = 0, len = stmt.guardedHandlers.length; i < len; ++i) {
-              result = join(result, generateStatement(stmt.guardedHandlers[i]));
-              if (stmt.finalizer || i + 1 !== len) {
-                result = maybeBlockSuffix(stmt.guardedHandlers[i].body, result);
-              }
-            }
-            if (stmt.handler) {
-              if (isArray(stmt.handler)) {
-                for (i = 0, len = stmt.handler.length; i < len; ++i) {
-                  result = join(result, generateStatement(stmt.handler[i]));
-                  if (stmt.finalizer || i + 1 !== len) {
-                    result = maybeBlockSuffix(stmt.handler[i].body, result);
-                  }
-                }
-              } else {
-                result = join(result, generateStatement(stmt.handler));
-                if (stmt.finalizer) {
-                  result = maybeBlockSuffix(stmt.handler.body, result);
-                }
-              }
-            }
-          }
-          if (stmt.finalizer) {
-            result = join(result, [
-              'finally',
-              maybeBlock(stmt.finalizer)
-            ]);
-          }
-          break;
-        case Syntax.SwitchStatement:
-          withIndent(function () {
-            result = [
-              'switch' + space + '(',
-              generateExpression(stmt.discriminant, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              ')' + space + '{' + newline
-            ];
-          });
-          if (stmt.cases) {
-            for (i = 0, len = stmt.cases.length; i < len; ++i) {
-              fragment = addIndent(generateStatement(stmt.cases[i], { semicolonOptional: i === len - 1 }));
-              result.push(fragment);
-              if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-                result.push(newline);
-              }
-            }
-          }
-          result.push(addIndent('}'));
-          break;
-        case Syntax.SwitchCase:
-          withIndent(function () {
-            if (stmt.test) {
-              result = [
-                join('case', generateExpression(stmt.test, {
-                  precedence: Precedence.Sequence,
-                  allowIn: true,
-                  allowCall: true
-                })),
-                ':'
-              ];
-            } else {
-              result = ['default:'];
-            }
-            i = 0;
-            len = stmt.consequent.length;
-            if (len && stmt.consequent[0].type === Syntax.BlockStatement) {
-              fragment = maybeBlock(stmt.consequent[0]);
-              result.push(fragment);
-              i = 1;
-            }
-            if (i !== len && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
-              result.push(newline);
-            }
-            for (; i < len; ++i) {
-              fragment = addIndent(generateStatement(stmt.consequent[i], { semicolonOptional: i === len - 1 && semicolon === '' }));
-              result.push(fragment);
-              if (i + 1 !== len && !endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-                result.push(newline);
-              }
-            }
-          });
-          break;
-        case Syntax.IfStatement:
-          withIndent(function () {
-            result = [
-              'if' + space + '(',
-              generateExpression(stmt.test, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              ')'
-            ];
-          });
-          if (stmt.alternate) {
-            result.push(maybeBlock(stmt.consequent));
-            result = maybeBlockSuffix(stmt.consequent, result);
-            if (stmt.alternate.type === Syntax.IfStatement) {
-              result = join(result, [
-                'else ',
-                generateStatement(stmt.alternate, { semicolonOptional: semicolon === '' })
-              ]);
-            } else {
-              result = join(result, join('else', maybeBlock(stmt.alternate, semicolon === '')));
-            }
-          } else {
-            result.push(maybeBlock(stmt.consequent, semicolon === ''));
-          }
-          break;
-        case Syntax.ForStatement:
-          withIndent(function () {
-            result = ['for' + space + '('];
-            if (stmt.init) {
-              if (stmt.init.type === Syntax.VariableDeclaration) {
-                result.push(generateStatement(stmt.init, { allowIn: false }));
-              } else {
-                result.push(generateExpression(stmt.init, {
-                  precedence: Precedence.Sequence,
-                  allowIn: false,
-                  allowCall: true
-                }));
-                result.push(';');
-              }
-            } else {
-              result.push(';');
-            }
-            if (stmt.test) {
-              result.push(space);
-              result.push(generateExpression(stmt.test, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }));
-              result.push(';');
-            } else {
-              result.push(';');
-            }
-            if (stmt.update) {
-              result.push(space);
-              result.push(generateExpression(stmt.update, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }));
-              result.push(')');
-            } else {
-              result.push(')');
-            }
-          });
-          result.push(maybeBlock(stmt.body, semicolon === ''));
-          break;
-        case Syntax.ForInStatement:
-          result = generateIterationForStatement('in', stmt, semicolon === '');
-          break;
-        case Syntax.ForOfStatement:
-          result = generateIterationForStatement('of', stmt, semicolon === '');
-          break;
-        case Syntax.LabeledStatement:
-          result = [
-            stmt.label.name + ':',
-            maybeBlock(stmt.body, semicolon === '')
-          ];
-          break;
-        case Syntax.Program:
-          len = stmt.body.length;
-          result = [safeConcatenation && len > 0 ? '\n' : ''];
-          for (i = 0; i < len; ++i) {
-            fragment = addIndent(generateStatement(stmt.body[i], {
-              semicolonOptional: !safeConcatenation && i === len - 1,
-              directiveContext: true
-            }));
-            result.push(fragment);
-            if (i + 1 < len && !endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
-              result.push(newline);
-            }
-          }
-          break;
-        case Syntax.FunctionDeclaration:
-          isGenerator = stmt.generator && !extra.moz.starlessGenerator;
-          result = [
-            isGenerator ? 'function*' : 'function',
-            isGenerator ? space : noEmptySpace(),
-            generateIdentifier(stmt.id),
-            generateFunctionBody(stmt)
-          ];
-          break;
-        case Syntax.ReturnStatement:
-          if (stmt.argument) {
-            result = [
-              join('return', generateExpression(stmt.argument, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              })),
-              semicolon
-            ];
-          } else {
-            result = ['return' + semicolon];
-          }
-          break;
-        case Syntax.WhileStatement:
-          withIndent(function () {
-            result = [
-              'while' + space + '(',
-              generateExpression(stmt.test, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              ')'
-            ];
-          });
-          result.push(maybeBlock(stmt.body, semicolon === ''));
-          break;
-        case Syntax.WithStatement:
-          withIndent(function () {
-            result = [
-              'with' + space + '(',
-              generateExpression(stmt.object, {
-                precedence: Precedence.Sequence,
-                allowIn: true,
-                allowCall: true
-              }),
-              ')'
-            ];
-          });
-          result.push(maybeBlock(stmt.body, semicolon === ''));
-          break;
-        default:
-          throw new Error('Unknown statement type: ' + stmt.type);
-        }
-        if (extra.comment) {
-          result = addComments(stmt, result);
-        }
-        fragment = toSourceNodeWhenNeeded(result).toString();
-        if (stmt.type === Syntax.Program && !safeConcatenation && newline === '' && fragment.charAt(fragment.length - 1) === '\n') {
-          result = sourceMap ? toSourceNodeWhenNeeded(result).replaceRight(/\s+$/, '') : fragment.replace(/\s+$/, '');
-        }
-        return toSourceNodeWhenNeeded(result, stmt);
-      }
-      function generate(node, options) {
-        var defaultOptions = getDefaultOptions(), result, pair;
-        if (options != null) {
-          if (typeof options.indent === 'string') {
-            defaultOptions.format.indent.style = options.indent;
-          }
-          if (typeof options.base === 'number') {
-            defaultOptions.format.indent.base = options.base;
-          }
-          options = updateDeeply(defaultOptions, options);
-          indent = options.format.indent.style;
-          if (typeof options.base === 'string') {
-            base = options.base;
-          } else {
-            base = stringRepeat(indent, options.format.indent.base);
-          }
-        } else {
-          options = defaultOptions;
-          indent = options.format.indent.style;
-          base = stringRepeat(indent, options.format.indent.base);
-        }
-        json = options.format.json;
-        renumber = options.format.renumber;
-        hexadecimal = json ? false : options.format.hexadecimal;
-        quotes = json ? 'double' : options.format.quotes;
-        escapeless = options.format.escapeless;
-        newline = options.format.newline;
-        space = options.format.space;
-        if (options.format.compact) {
-          newline = space = indent = base = '';
-        }
-        parentheses = options.format.parentheses;
-        semicolons = options.format.semicolons;
-        safeConcatenation = options.format.safeConcatenation;
-        directive = options.directive;
-        parse = json ? null : options.parse;
-        sourceMap = options.sourceMap;
-        extra = options;
-        if (sourceMap) {
-          if (!exports.browser) {
-            SourceNode = require('./node_modules/source-map/lib/source-map.js').SourceNode;
-          } else {
-            SourceNode = global.sourceMap.SourceNode;
-          }
-        }
-        switch (node.type) {
-        case Syntax.BlockStatement:
-        case Syntax.BreakStatement:
-        case Syntax.CatchClause:
-        case Syntax.ContinueStatement:
-        case Syntax.DirectiveStatement:
-        case Syntax.DoWhileStatement:
-        case Syntax.DebuggerStatement:
-        case Syntax.EmptyStatement:
-        case Syntax.ExpressionStatement:
-        case Syntax.ForStatement:
-        case Syntax.ForInStatement:
-        case Syntax.ForOfStatement:
-        case Syntax.FunctionDeclaration:
-        case Syntax.IfStatement:
-        case Syntax.LabeledStatement:
-        case Syntax.Program:
-        case Syntax.ReturnStatement:
-        case Syntax.SwitchStatement:
-        case Syntax.SwitchCase:
-        case Syntax.ThrowStatement:
-        case Syntax.TryStatement:
-        case Syntax.VariableDeclaration:
-        case Syntax.VariableDeclarator:
-        case Syntax.WhileStatement:
-        case Syntax.WithStatement:
-          result = generateStatement(node);
-          break;
-        case Syntax.AssignmentExpression:
-        case Syntax.ArrayExpression:
-        case Syntax.ArrayPattern:
-        case Syntax.BinaryExpression:
-        case Syntax.CallExpression:
-        case Syntax.ConditionalExpression:
-        case Syntax.FunctionExpression:
-        case Syntax.Identifier:
-        case Syntax.Literal:
-        case Syntax.LogicalExpression:
-        case Syntax.MemberExpression:
-        case Syntax.NewExpression:
-        case Syntax.ObjectExpression:
-        case Syntax.ObjectPattern:
-        case Syntax.Property:
-        case Syntax.SequenceExpression:
-        case Syntax.ThisExpression:
-        case Syntax.UnaryExpression:
-        case Syntax.UpdateExpression:
-        case Syntax.YieldExpression:
-          result = generateExpression(node, {
-            precedence: Precedence.Sequence,
-            allowIn: true,
-            allowCall: true
-          });
-          break;
-        default:
-          throw new Error('Unknown node type: ' + node.type);
-        }
-        if (!sourceMap) {
-          return result.toString();
-        }
-        pair = result.toStringWithSourceMap({
-          file: options.file,
-          sourceRoot: options.sourceMapRoot
-        });
-        if (options.sourceContent) {
-          pair.map.setSourceContent(options.sourceMap, options.sourceContent);
-        }
-        if (options.sourceMapWithCode) {
-          return pair;
-        }
-        return pair.map.toString();
-      }
-      FORMAT_MINIFY = {
-        indent: {
-          style: '',
-          base: 0
-        },
-        renumber: true,
-        hexadecimal: true,
-        quotes: 'auto',
-        escapeless: true,
-        compact: true,
-        parentheses: false,
-        semicolons: false
-      };
-      FORMAT_DEFAULTS = getDefaultOptions().format;
-      exports.version = '1.3.2';
-      exports.generate = generate;
-      exports.attachComments = estraverse.attachComments;
-      exports.Precedence = updateDeeply({}, Precedence);
-      exports.browser = false;
-      exports.FORMAT_MINIFY = FORMAT_MINIFY;
-      exports.FORMAT_DEFAULTS = FORMAT_DEFAULTS;
-    }());
-  },
   './node_modules/esprima/esprima.js': function (require, module, exports, global) {
     (function (root, factory) {
       'use strict';
@@ -6964,6 +4342,2626 @@
       }();
     }));
   },
+  './node_modules/elements/index.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('./node_modules/elements/base.js');
+    require('./node_modules/elements/attributes.js');
+    require('./node_modules/elements/events.js');
+    require('./node_modules/elements/insertion.js');
+    require('./node_modules/elements/traversal.js');
+    require('./node_modules/elements/delegation.js');
+    module.exports = $;
+  },
+  './node_modules/quickstart-next/index.js': function (require, module, exports, global) {
+    'use strict';
+    var esprima = require('./node_modules/esprima/esprima.js');
+    var Syntax = esprima.Syntax;
+    var estraverse = require('./node_modules/estraverse/estraverse.js');
+    var scopes = require('./node_modules/scopes/index.js');
+    var forEachRight = function (list, visitor, ctx) {
+      for (var i = list.length; i--;) {
+        visitor.call(ctx, list[i], i, list);
+      }
+    };
+    var define = function (obj, key, value) {
+      Object.defineProperty(obj, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value: value
+      });
+      return value;
+    };
+    var expression = function (string) {
+      return esprima.parse(string).body[0].expression;
+    };
+    var getUndefined = function (scope) {
+      if (!scope.undefinedId) {
+        scope.undefinedId = scope.uniqueId('undefined');
+        scope.undefinedNode = scope.declare(0, scope.undefinedId, {
+          type: Syntax.UnaryExpression,
+          operator: 'void',
+          argument: {
+            type: Syntax.Literal,
+            value: 0
+          },
+          prefix: true
+        });
+      }
+      return {
+        id: scope.undefinedId,
+        node: scope.undefinedNode
+      };
+    };
+    var getSelf = function (scope) {
+      if (!scope.selfId) {
+        scope.selfId = scope.uniqueId('self');
+        scope.selfNode = scope.declare(0, scope.selfId, { type: Syntax.ThisExpression });
+      }
+      return {
+        id: scope.selfId,
+        node: scope.selfNode
+      };
+    };
+    var getSlice = function (scope) {
+      if (!scope.sliceId) {
+        scope.sliceId = scope.uniqueId('slice');
+        scope.sliceNode = scope.declare(0, scope.sliceId, expression('Array.prototype.slice'));
+      }
+      return {
+        id: scope.sliceId,
+        node: scope.sliceNode
+      };
+    };
+    var getCreate = function (scope) {
+      if (!scope.createId) {
+        scope.createId = scope.uniqueId('create');
+        scope.createNode = scope.declare(0, scope.createId, expression('Object.create'));
+      }
+      return {
+        id: scope.createId,
+        node: scope.createNode
+      };
+    };
+    var getIsArray = function (scope) {
+      if (!scope.isArrayId) {
+        scope.isArrayId = scope.uniqueId('isArray');
+        scope.isArrayNode = scope.declare(0, scope.isArrayId, expression('Array.isArray'));
+      }
+      return {
+        id: scope.isArrayId,
+        node: scope.isArrayNode
+      };
+    };
+    var getApply = function (scope) {
+      if (!scope.applyId) {
+        var create = getCreate(scope);
+        scope.applyId = scope.uniqueId('apply');
+        scope.applyNode = scope.declare(scope.body.indexOf(create.node) + 1, scope.applyId, expression('(function(constructor, rest) {' + 'var self = ' + create.id.name + '(constructor.prototype);' + 'constructor.apply(self, rest);' + 'return self;' + '})'));
+      }
+      return {
+        id: scope.applyId,
+        node: scope.applyNode
+      };
+    };
+    var getToArray = function (scope) {
+      if (!scope.toArrayId) {
+        var slice = getSlice(scope);
+        var isArray = getIsArray(scope);
+        var index = Math.max(scope.body.indexOf(slice.node), scope.body.indexOf(isArray.node)) + 1;
+        scope.toArrayId = scope.uniqueId('toArray');
+        scope.toArrayNode = scope.declare(index, scope.toArrayId, expression('(function(list) {' + 'return (' + isArray.id.name + '(list)) ? list : ' + slice.id.name + '.call(list);' + '})'));
+      }
+      return {
+        id: scope.toArrayId,
+        node: scope.toArrayNode
+      };
+    };
+    var createCallExpression = function (functionId, nodes) {
+      return {
+        type: Syntax.CallExpression,
+        callee: functionId,
+        arguments: nodes
+      };
+    };
+    var createDeclarator = function (id, init) {
+      return {
+        type: Syntax.VariableDeclarator,
+        id: id,
+        init: init
+      };
+    };
+    var createAssignment = function (left, right) {
+      return {
+        type: Syntax.AssignmentExpression,
+        operator: '=',
+        left: left,
+        right: right
+      };
+    };
+    var createSliceCallExpression = function (sliceId, node, length) {
+      var sliceCall = {
+          type: Syntax.CallExpression,
+          callee: {
+            type: Syntax.MemberExpression,
+            computed: false,
+            object: sliceId,
+            property: {
+              type: Syntax.Identifier,
+              name: 'call'
+            }
+          },
+          arguments: [node]
+        };
+      if (length > 0) {
+        sliceCall.arguments.push({
+          type: Syntax.Literal,
+          value: length
+        });
+      }
+      return sliceCall;
+    };
+    var numbers = [
+        'zero',
+        'one',
+        'two',
+        'three',
+        'four',
+        'five',
+        'six',
+        'seven',
+        'eight',
+        'nine',
+        'ten'
+      ];
+    var transformForOf = function (scope, node) {
+      node.type = Syntax.ForStatement;
+      var body = node.body.body;
+      var right = node.right;
+      delete node.right;
+      var left = node.left;
+      delete node.left;
+      if (right.type !== Syntax.Identifier) {
+        var rightId = scope.uniqueId('object');
+        scope.declareBefore(node, rightId, right);
+        right = rightId;
+      }
+      var iteratorId = scope.uniqueId('iterator');
+      var nextId = scope.uniqueId('next');
+      node.init = {
+        type: Syntax.VariableDeclaration,
+        declarations: [],
+        kind: 'var'
+      };
+      scope.declareOn(node.init, [
+        {
+          type: Syntax.VariableDeclarator,
+          id: iteratorId,
+          init: {
+            type: Syntax.CallExpression,
+            callee: {
+              type: Syntax.MemberExpression,
+              computed: true,
+              object: right,
+              property: {
+                type: Syntax.Literal,
+                value: '@@iterator'
+              }
+            },
+            arguments: []
+          }
+        },
+        {
+          type: Syntax.VariableDeclarator,
+          id: nextId,
+          init: null
+        }
+      ]);
+      node.test = {
+        type: Syntax.UnaryExpression,
+        operator: '!',
+        argument: {
+          type: Syntax.MemberExpression,
+          computed: false,
+          object: {
+            type: Syntax.AssignmentExpression,
+            operator: '=',
+            left: nextId,
+            right: {
+              type: Syntax.CallExpression,
+              callee: {
+                type: Syntax.MemberExpression,
+                computed: false,
+                object: iteratorId,
+                property: {
+                  type: Syntax.Identifier,
+                  name: 'next'
+                }
+              },
+              arguments: []
+            }
+          },
+          property: {
+            type: Syntax.Identifier,
+            name: 'done'
+          }
+        },
+        prefix: true
+      };
+      node.update = null;
+      if (left.type === Syntax.VariableDeclaration) {
+        var declaration = scope.declareIn(body, 0, left.declarations[0].id, {
+            type: Syntax.MemberExpression,
+            computed: false,
+            object: nextId,
+            property: {
+              type: Syntax.Identifier,
+              name: 'value'
+            }
+          });
+        transformPatternDeclaration(scope, declaration);
+      }
+    };
+    var destructPattern = function (scope, declarations, valueId, pattern, asAssignment) {
+      var create = asAssignment ? createAssignment : createDeclarator;
+      if (pattern.type === Syntax.ArrayPattern) {
+        pattern.elements.forEach(function (element, i) {
+          if (element == null)
+            return;
+          var member = valueId ? {
+              type: Syntax.MemberExpression,
+              computed: true,
+              object: valueId,
+              property: {
+                type: Syntax.Literal,
+                value: i
+              }
+            } : null;
+          if (element.type === Syntax.Identifier) {
+            declarations.push(create(element, member));
+          } else {
+            var nestedId;
+            if (valueId) {
+              nestedId = scope.uniqueId(valueId.name + i);
+              scope.declareBefore(pattern, nestedId, member);
+            }
+            destructPattern(scope, declarations, nestedId, element, asAssignment);
+          }
+        });
+      } else if (pattern.type === Syntax.ObjectPattern) {
+        pattern.properties.forEach(function (property) {
+          var member = valueId ? {
+              type: Syntax.MemberExpression,
+              computed: false,
+              object: valueId,
+              property: {
+                type: Syntax.Identifier,
+                name: property.key.name
+              }
+            } : null;
+          var value = property.value;
+          if (value.type === Syntax.Identifier) {
+            declarations.push(create(value, member));
+          } else {
+            var nestedId;
+            if (valueId) {
+              nestedId = scope.uniqueId(property.key.name);
+              scope.declareBefore(pattern, nestedId, member);
+            }
+            destructPattern(scope, declarations, nestedId, property.value, asAssignment);
+          }
+        });
+      }
+      return declarations;
+    };
+    var transformPatternForIn = function (scope, node) {
+      var block = node.body.body;
+      var declarations = node.left.declarations;
+      var pattern = declarations[0].id;
+      var keyId = scope.uniqueId('key');
+      declarations[0].id = keyId;
+      var rightId;
+      if (node.right.type !== Syntax.Identifier) {
+        rightId = scope.uniqueId('object');
+        scope.declareBefore(node, rightId, node.right);
+        node.right = rightId;
+      } else {
+        rightId = node.right;
+      }
+      var declaration = scope.declareIn(block, 0, pattern, {
+          type: Syntax.ArrayExpression,
+          elements: [
+            keyId,
+            {
+              type: Syntax.MemberExpression,
+              computed: true,
+              object: rightId,
+              property: keyId
+            }
+          ]
+        });
+      transformPatternDeclaration(scope, declaration);
+    };
+    var transformPatternExpression = function (scope, node) {
+      node.expression = {
+        type: Syntax.SequenceExpression,
+        expressions: [node.expression]
+      };
+      transformPatternSequence(scope, node.expression);
+    };
+    var transformPatternSequence = function (scope, node) {
+      forEachRight(node.expressions, function (expression, i) {
+        var left = expression.left;
+        var right = expression.right;
+        if (left.type !== Syntax.ArrayPattern && left.type !== Syntax.ObjectPattern)
+          return;
+        var valueId;
+        if (right.type === Syntax.Identifier) {
+          valueId = right;
+        } else {
+          valueId = scope.uniqueId('pattern');
+          scope.declareBefore(node, valueId, right);
+        }
+        var assignments = destructPattern(scope, [], valueId, left, true);
+        node.expressions.splice.apply(node.expressions, [
+          i,
+          1
+        ].concat(assignments));
+      });
+    };
+    var transformPatternParams = function (scope, node) {
+      forEachRight(node.params, function (param, i) {
+        if (param.type !== Syntax.ArrayPattern && param.type !== Syntax.ObjectPattern)
+          return;
+        var newId = scope.uniqueId('pattern');
+        node.params.splice(i, 1, newId);
+        var declarators = destructPattern(scope, [], newId, param);
+        if (declarators.length)
+          scope.declare(0, declarators);
+      });
+    };
+    var transformPatternDeclaration = function (scope, node) {
+      forEachRight(node.declarations, function (declarator, i) {
+        var pattern = declarator.id;
+        if (pattern.type !== Syntax.ArrayPattern && pattern.type !== Syntax.ObjectPattern)
+          return;
+        var declarators;
+        if (declarator.init == null) {
+          declarators = destructPattern(scope, [], null, pattern);
+        } else {
+          var valueId;
+          if (declarator.init.type === Syntax.Identifier) {
+            valueId = declarator.init;
+          } else {
+            valueId = scope.uniqueId('pattern');
+            scope.declareBefore(node, valueId, declarator.init);
+          }
+          declarators = destructPattern(scope, [], valueId, pattern);
+        }
+        node.declarations.splice.apply(node.declarations, [
+          i,
+          1
+        ].concat(declarators));
+      });
+    };
+    var transformThis = function (scope, node) {
+      node.type = Syntax.Identifier;
+      node.name = getSelf(scope).id.name;
+    };
+    var transformSpread = function (scope, node, spreadElement) {
+      var root = scope.root;
+      var args = node.type === Syntax.ArrayExpression ? node.elements : node.arguments;
+      var argument = spreadElement.argument;
+      if (argument.type === Syntax.ArrayExpression) {
+        args.push.apply(args, argument.elements);
+        return;
+      }
+      var length = args.length;
+      if (length > 0) {
+        var concat = {
+            type: Syntax.CallExpression,
+            callee: {
+              type: Syntax.MemberExpression,
+              computed: false,
+              object: {
+                type: Syntax.ArrayExpression,
+                elements: []
+              },
+              property: {
+                type: Syntax.Identifier,
+                name: 'concat'
+              }
+            },
+            arguments: []
+          };
+        for (var i = 0; i < length; i++) {
+          var arg = args[i];
+          concat.callee.object.elements.push(arg);
+        }
+        if (!~scope.arrays.indexOf(argument.name)) {
+          argument = createCallExpression(getToArray(root).id, [argument]);
+        }
+        concat.arguments.push(argument);
+        argument = concat;
+        args.splice(0, length, argument);
+      } else {
+        args.push(argument);
+      }
+      if (node.type === Syntax.CallExpression) {
+        if (node.callee.type !== Syntax.MemberExpression) {
+          args.unshift({
+            type: Syntax.Literal,
+            value: null
+          });
+        } else {
+          if (node.callee.object.type !== Syntax.Identifier) {
+            var contextId = scope.sequenceId('context');
+            scope.declareBefore(node, contextId, node.callee.object);
+            node.callee.object = contextId;
+          }
+          args.unshift(node.callee.object);
+        }
+        node.callee = {
+          type: Syntax.MemberExpression,
+          computed: false,
+          object: node.callee,
+          property: {
+            type: Syntax.Identifier,
+            name: 'apply'
+          }
+        };
+      } else if (node.type === Syntax.NewExpression) {
+        node.type = Syntax.CallExpression;
+        node.arguments.unshift(node.callee);
+        node.callee = getApply(root).id;
+      } else if (node.type === Syntax.ArrayExpression) {
+        if (length > 0) {
+          node.type = Syntax.CallExpression;
+          node.callee = argument.callee;
+          node.arguments = argument.arguments;
+        } else {
+          argument = createSliceCallExpression(getSlice(root).id, argument, 0);
+          node.type = Syntax.CallExpression;
+          node.callee = argument.callee;
+          node.arguments = argument.arguments;
+        }
+      }
+    };
+    var transformRest = function (scope, node, rest, defaults) {
+      var params = node.params;
+      scope.declare(0, rest, createSliceCallExpression(getSlice(scope.root).id, {
+        type: Syntax.Identifier,
+        name: 'arguments'
+      }, params.length + (defaults ? defaults.length : 0)));
+    };
+    var transformDefaults = function (scope, node, defaults) {
+      var root = scope.root;
+      var params = node.params;
+      var broken;
+      forEachRight(defaults, function (defaultParam, i) {
+        if (defaultParam && broken)
+          throw new Error('only trailing parameters can have defaults');
+        if (!defaultParam)
+          return broken = true;
+        var param = params.splice(i, 1)[0];
+        var undefinedId = getUndefined(root).id;
+        var argumentId = scope.uniqueId(numbers[i] || '_' + i);
+        scope.declare(0, param, {
+          type: Syntax.ConditionalExpression,
+          test: {
+            type: Syntax.BinaryExpression,
+            operator: '===',
+            left: argumentId,
+            right: undefinedId
+          },
+          consequent: defaultParam,
+          alternate: argumentId
+        });
+        scope.declare(0, argumentId, {
+          type: Syntax.MemberExpression,
+          computed: true,
+          object: {
+            type: Syntax.Identifier,
+            name: 'arguments'
+          },
+          property: {
+            type: Syntax.Literal,
+            value: i
+          }
+        });
+      });
+    };
+    var traverseScopes = function (root, result) {
+      root.traverse(function (scope, node) {
+        if (!scope.arrays)
+          scope.arrays = [];
+        var uid = node.uid;
+        var functions = result.functions;
+        var arrowElements = functions.arrow;
+        if (arrowElements[scope.node.uid] && node.type === Syntax.ThisExpression) {
+          var parentScope = scope.parent;
+          while (arrowElements[parentScope.node.uid])
+            parentScope = parentScope.parent;
+          transformThis(parentScope, node);
+        }
+        var defaultsElement = functions.defaults[uid];
+        if (defaultsElement) {
+          transformDefaults(scope, node, defaultsElement);
+        }
+        var patternParamsElement = functions.pattern[uid];
+        if (patternParamsElement) {
+          transformPatternParams(scope, node);
+        }
+        var restElement = functions.rest[uid];
+        if (restElement) {
+          if (!scope.references(restElement.name)) {
+            scope.arrays.push(restElement.name);
+          }
+          transformRest(scope, node, restElement, defaultsElement);
+        }
+        var spreadElement = result.spread[uid];
+        if (spreadElement) {
+          transformSpread(scope, node, spreadElement);
+        }
+        var patternForInElement = result.pattern.forIn[uid];
+        if (patternForInElement) {
+          transformPatternForIn(scope, node);
+        }
+        var forOfElement = result.forOf[uid];
+        if (forOfElement) {
+          transformForOf(scope, node);
+        }
+        var patternDeclarationElement = result.pattern.declaration[uid];
+        if (patternDeclarationElement) {
+          transformPatternDeclaration(scope, node);
+        }
+        var patternSequenceElement = result.pattern.sequence[uid];
+        if (patternSequenceElement) {
+          transformPatternSequence(scope, node);
+        }
+        var patternExpressionElement = result.pattern.expression[uid];
+        if (patternExpressionElement) {
+          transformPatternExpression(scope, node);
+        }
+      });
+    };
+    var normalizeSpread = function (collection) {
+      var lastIndex = collection.length - 1;
+      var spreadElement = collection[lastIndex];
+      if (spreadElement && spreadElement.type === Syntax.SpreadElement) {
+        collection.splice(lastIndex, 1);
+        return spreadElement;
+      }
+      return null;
+    };
+    var normalizeArrowFunction = function (node) {
+      if (node.expression) {
+        node.expression = false;
+        node.body = {
+          type: Syntax.BlockStatement,
+          body: [{
+              type: Syntax.ReturnStatement,
+              argument: node.body
+            }]
+        };
+      }
+      node.type = Syntax.FunctionExpression;
+      return node;
+    };
+    var UID = 0;
+    var normalize = function (tree) {
+      var result = {
+          functions: {
+            arrow: {},
+            defaults: {},
+            rest: {},
+            pattern: {}
+          },
+          spread: {},
+          forOf: {},
+          pattern: {
+            declaration: {},
+            sequence: {},
+            expression: {},
+            forIn: {}
+          }
+        };
+      estraverse.traverse(tree, {
+        enter: function (node, parent) {
+          var uid = define(node, 'uid', (UID++).toString(36));
+          var i;
+          var functions = result.functions;
+          if (node.type === Syntax.ArrowFunctionExpression) {
+            functions.arrow[uid] = node;
+            normalizeArrowFunction(node);
+          }
+          if (node.type === Syntax.FunctionExpression || node.type === Syntax.FunctionDeclaration) {
+            if (node.rest) {
+              functions.rest[uid] = node.rest;
+              node.rest = null;
+            }
+            if (node.defaults && node.defaults.length) {
+              functions.defaults[uid] = node.defaults;
+              node.defaults = [];
+            }
+            for (i = 0; i < node.params.length; i++) {
+              var param = node.params[i];
+              if (param.type === Syntax.ArrayPattern || param.type === Syntax.ObjectPattern) {
+                functions.pattern[uid] = node;
+                break;
+              }
+            }
+          }
+          var spreadNode;
+          if (node.type === Syntax.CallExpression || node.type === Syntax.NewExpression) {
+            spreadNode = normalizeSpread(node.arguments);
+          } else if (node.type === Syntax.ArrayExpression) {
+            spreadNode = normalizeSpread(node.elements);
+          }
+          if (spreadNode)
+            result.spread[uid] = spreadNode;
+          if (node.type === Syntax.ForInStatement && node.left.type === Syntax.VariableDeclaration) {
+            var pattern = node.left.declarations[0].id;
+            if (pattern.type === Syntax.ObjectPattern || pattern.type === Syntax.ArrayPattern) {
+              result.pattern.forIn[uid] = node;
+            }
+          } else if (node.type === Syntax.ForOfStatement) {
+            node.type = Syntax.ForInStatement;
+            result.forOf[uid] = node;
+          }
+          if (node.type === Syntax.VariableDeclaration && parent.type !== Syntax.ForInStatement) {
+            for (i = 0; i < node.declarations.length; i++) {
+              var declarator = node.declarations[i];
+              if (declarator.id.type === Syntax.ArrayPattern || declarator.id.type === Syntax.ObjectPattern) {
+                result.pattern.declaration[uid] = node;
+                break;
+              }
+            }
+          }
+          if (node.type === Syntax.ExpressionStatement && node.expression.type === Syntax.AssignmentExpression) {
+            if (node.expression.left.type === Syntax.ArrayPattern || node.expression.left.type === Syntax.ObjectPattern) {
+              result.pattern.expression[uid] = node;
+            }
+          }
+          if (node.type === Syntax.SequenceExpression) {
+            for (i = 0; i < node.expressions.length; i++) {
+              var expression = node.expressions[i];
+              if (expression.left.type === Syntax.ArrayPattern || expression.left.type === Syntax.ObjectPattern) {
+                result.pattern.sequence[uid] = node;
+                break;
+              }
+            }
+          }
+          if (node.type === Syntax.ObjectExpression || node.type === Syntax.ObjectPattern) {
+            node.properties.forEach(function (property) {
+              if (property.shorthand)
+                property.shorthand = false;
+              if (property.method)
+                property.method = false;
+            });
+          }
+          if (node.type === Syntax.IfStatement) {
+            if (node.consequent.type !== Syntax.BlockStatement) {
+              node.consequent = {
+                type: Syntax.BlockStatement,
+                body: [node.consequent]
+              };
+            }
+            if (node.alternate && node.alternate.type !== Syntax.BlockStatement) {
+              node.alternate = {
+                type: Syntax.BlockStatement,
+                body: [node.alternate]
+              };
+            }
+          }
+          if ((node.type === Syntax.ForStatement || node.type === Syntax.ForInStatement || node.type === Syntax.WhileStatement || node.type === Syntax.DoWhileStatement || node.type === Syntax.LabeledStatement) && node.body.type !== Syntax.BlockStatement) {
+            node.body = {
+              type: Syntax.BlockStatement,
+              body: [node.body]
+            };
+          }
+        }
+      });
+      return result;
+    };
+    var transform = function (tree) {
+      var result = normalize(tree);
+      var root = scopes(tree);
+      traverseScopes(root, result);
+      return tree;
+    };
+    transform.transforms = [function (path, tree) {
+        return transform(tree);
+      }];
+    module.exports = transform;
+  },
+  './node_modules/escodegen/escodegen.js': function (require, module, exports, global) {
+    (function () {
+      'use strict';
+      var Syntax, Precedence, BinaryPrecedence, SourceNode, estraverse, esutils, isArray, base, indent, json, renumber, hexadecimal, quotes, escapeless, newline, space, parentheses, semicolons, safeConcatenation, directive, extra, parse, sourceMap, FORMAT_MINIFY, FORMAT_DEFAULTS;
+      estraverse = require('./node_modules/estraverse/estraverse.js');
+      esutils = require('./node_modules/escodegen/node_modules/esutils/lib/utils.js');
+      Syntax = {
+        AssignmentExpression: 'AssignmentExpression',
+        ArrayExpression: 'ArrayExpression',
+        ArrayPattern: 'ArrayPattern',
+        ArrowFunctionExpression: 'ArrowFunctionExpression',
+        BlockStatement: 'BlockStatement',
+        BinaryExpression: 'BinaryExpression',
+        BreakStatement: 'BreakStatement',
+        CallExpression: 'CallExpression',
+        CatchClause: 'CatchClause',
+        ComprehensionBlock: 'ComprehensionBlock',
+        ComprehensionExpression: 'ComprehensionExpression',
+        ConditionalExpression: 'ConditionalExpression',
+        ContinueStatement: 'ContinueStatement',
+        DirectiveStatement: 'DirectiveStatement',
+        DoWhileStatement: 'DoWhileStatement',
+        DebuggerStatement: 'DebuggerStatement',
+        EmptyStatement: 'EmptyStatement',
+        ExportDeclaration: 'ExportDeclaration',
+        ExpressionStatement: 'ExpressionStatement',
+        ForStatement: 'ForStatement',
+        ForInStatement: 'ForInStatement',
+        ForOfStatement: 'ForOfStatement',
+        FunctionDeclaration: 'FunctionDeclaration',
+        FunctionExpression: 'FunctionExpression',
+        GeneratorExpression: 'GeneratorExpression',
+        Identifier: 'Identifier',
+        IfStatement: 'IfStatement',
+        Literal: 'Literal',
+        LabeledStatement: 'LabeledStatement',
+        LogicalExpression: 'LogicalExpression',
+        MemberExpression: 'MemberExpression',
+        NewExpression: 'NewExpression',
+        ObjectExpression: 'ObjectExpression',
+        ObjectPattern: 'ObjectPattern',
+        Program: 'Program',
+        Property: 'Property',
+        ReturnStatement: 'ReturnStatement',
+        SequenceExpression: 'SequenceExpression',
+        SwitchStatement: 'SwitchStatement',
+        SwitchCase: 'SwitchCase',
+        ThisExpression: 'ThisExpression',
+        ThrowStatement: 'ThrowStatement',
+        TryStatement: 'TryStatement',
+        UnaryExpression: 'UnaryExpression',
+        UpdateExpression: 'UpdateExpression',
+        VariableDeclaration: 'VariableDeclaration',
+        VariableDeclarator: 'VariableDeclarator',
+        WhileStatement: 'WhileStatement',
+        WithStatement: 'WithStatement',
+        YieldExpression: 'YieldExpression'
+      };
+      Precedence = {
+        Sequence: 0,
+        Yield: 1,
+        Assignment: 1,
+        Conditional: 2,
+        ArrowFunction: 2,
+        LogicalOR: 3,
+        LogicalAND: 4,
+        BitwiseOR: 5,
+        BitwiseXOR: 6,
+        BitwiseAND: 7,
+        Equality: 8,
+        Relational: 9,
+        BitwiseSHIFT: 10,
+        Additive: 11,
+        Multiplicative: 12,
+        Unary: 13,
+        Postfix: 14,
+        Call: 15,
+        New: 16,
+        Member: 17,
+        Primary: 18
+      };
+      BinaryPrecedence = {
+        '||': Precedence.LogicalOR,
+        '&&': Precedence.LogicalAND,
+        '|': Precedence.BitwiseOR,
+        '^': Precedence.BitwiseXOR,
+        '&': Precedence.BitwiseAND,
+        '==': Precedence.Equality,
+        '!=': Precedence.Equality,
+        '===': Precedence.Equality,
+        '!==': Precedence.Equality,
+        'is': Precedence.Equality,
+        'isnt': Precedence.Equality,
+        '<': Precedence.Relational,
+        '>': Precedence.Relational,
+        '<=': Precedence.Relational,
+        '>=': Precedence.Relational,
+        'in': Precedence.Relational,
+        'instanceof': Precedence.Relational,
+        '<<': Precedence.BitwiseSHIFT,
+        '>>': Precedence.BitwiseSHIFT,
+        '>>>': Precedence.BitwiseSHIFT,
+        '+': Precedence.Additive,
+        '-': Precedence.Additive,
+        '*': Precedence.Multiplicative,
+        '%': Precedence.Multiplicative,
+        '/': Precedence.Multiplicative
+      };
+      function getDefaultOptions() {
+        return {
+          indent: null,
+          base: null,
+          parse: null,
+          comment: false,
+          format: {
+            indent: {
+              style: '    ',
+              base: 0,
+              adjustMultilineComment: false
+            },
+            newline: '\n',
+            space: ' ',
+            json: false,
+            renumber: false,
+            hexadecimal: false,
+            quotes: 'single',
+            escapeless: false,
+            compact: false,
+            parentheses: true,
+            semicolons: true,
+            safeConcatenation: false
+          },
+          moz: {
+            comprehensionExpressionStartsWithAssignment: false,
+            starlessGenerator: false,
+            parenthesizedComprehensionBlock: false
+          },
+          sourceMap: null,
+          sourceMapRoot: null,
+          sourceMapWithCode: false,
+          directive: false,
+          raw: true,
+          verbatim: null
+        };
+      }
+      function stringRepeat(str, num) {
+        var result = '';
+        for (num |= 0; num > 0; num >>>= 1, str += str) {
+          if (num & 1) {
+            result += str;
+          }
+        }
+        return result;
+      }
+      isArray = Array.isArray;
+      if (!isArray) {
+        isArray = function isArray(array) {
+          return Object.prototype.toString.call(array) === '[object Array]';
+        };
+      }
+      function hasLineTerminator(str) {
+        return /[\r\n]/g.test(str);
+      }
+      function endsWithLineTerminator(str) {
+        var len = str.length;
+        return len && esutils.code.isLineTerminator(str.charCodeAt(len - 1));
+      }
+      function updateDeeply(target, override) {
+        var key, val;
+        function isHashObject(target) {
+          return typeof target === 'object' && target instanceof Object && !(target instanceof RegExp);
+        }
+        for (key in override) {
+          if (override.hasOwnProperty(key)) {
+            val = override[key];
+            if (isHashObject(val)) {
+              if (isHashObject(target[key])) {
+                updateDeeply(target[key], val);
+              } else {
+                target[key] = updateDeeply({}, val);
+              }
+            } else {
+              target[key] = val;
+            }
+          }
+        }
+        return target;
+      }
+      function generateNumber(value) {
+        var result, point, temp, exponent, pos;
+        if (value !== value) {
+          throw new Error('Numeric literal whose value is NaN');
+        }
+        if (value < 0 || value === 0 && 1 / value < 0) {
+          throw new Error('Numeric literal whose value is negative');
+        }
+        if (value === 1 / 0) {
+          return json ? 'null' : renumber ? '1e400' : '1e+400';
+        }
+        result = '' + value;
+        if (!renumber || result.length < 3) {
+          return result;
+        }
+        point = result.indexOf('.');
+        if (!json && result.charCodeAt(0) === 48 && point === 1) {
+          point = 0;
+          result = result.slice(1);
+        }
+        temp = result;
+        result = result.replace('e+', 'e');
+        exponent = 0;
+        if ((pos = temp.indexOf('e')) > 0) {
+          exponent = +temp.slice(pos + 1);
+          temp = temp.slice(0, pos);
+        }
+        if (point >= 0) {
+          exponent -= temp.length - point - 1;
+          temp = +(temp.slice(0, point) + temp.slice(point + 1)) + '';
+        }
+        pos = 0;
+        while (temp.charCodeAt(temp.length + pos - 1) === 48) {
+          --pos;
+        }
+        if (pos !== 0) {
+          exponent -= pos;
+          temp = temp.slice(0, pos);
+        }
+        if (exponent !== 0) {
+          temp += 'e' + exponent;
+        }
+        if ((temp.length < result.length || hexadecimal && value > 1000000000000 && Math.floor(value) === value && (temp = '0x' + value.toString(16)).length < result.length) && +temp === value) {
+          result = temp;
+        }
+        return result;
+      }
+      function escapeRegExpCharacter(ch, previousIsBackslash) {
+        if ((ch & ~1) === 8232) {
+          return (previousIsBackslash ? 'u' : '\\u') + (ch === 8232 ? '2028' : '2029');
+        } else if (ch === 10 || ch === 13) {
+          return (previousIsBackslash ? '' : '\\') + (ch === 10 ? 'n' : 'r');
+        }
+        return String.fromCharCode(ch);
+      }
+      function generateRegExp(reg) {
+        var match, result, flags, i, iz, ch, characterInBrack, previousIsBackslash;
+        result = reg.toString();
+        if (reg.source) {
+          match = result.match(/\/([^/]*)$/);
+          if (!match) {
+            return result;
+          }
+          flags = match[1];
+          result = '';
+          characterInBrack = false;
+          previousIsBackslash = false;
+          for (i = 0, iz = reg.source.length; i < iz; ++i) {
+            ch = reg.source.charCodeAt(i);
+            if (!previousIsBackslash) {
+              if (characterInBrack) {
+                if (ch === 93) {
+                  characterInBrack = false;
+                }
+              } else {
+                if (ch === 47) {
+                  result += '\\';
+                } else if (ch === 91) {
+                  characterInBrack = true;
+                }
+              }
+              result += escapeRegExpCharacter(ch, previousIsBackslash);
+              previousIsBackslash = ch === 92;
+            } else {
+              result += escapeRegExpCharacter(ch, previousIsBackslash);
+              previousIsBackslash = false;
+            }
+          }
+          return '/' + result + '/' + flags;
+        }
+        return result;
+      }
+      function escapeAllowedCharacter(code, next) {
+        var hex, result = '\\';
+        switch (code) {
+        case 8:
+          result += 'b';
+          break;
+        case 12:
+          result += 'f';
+          break;
+        case 9:
+          result += 't';
+          break;
+        default:
+          hex = code.toString(16).toUpperCase();
+          if (json || code > 255) {
+            result += 'u' + '0000'.slice(hex.length) + hex;
+          } else if (code === 0 && !esutils.code.isDecimalDigit(next)) {
+            result += '0';
+          } else if (code === 11) {
+            result += 'x0B';
+          } else {
+            result += 'x' + '00'.slice(hex.length) + hex;
+          }
+          break;
+        }
+        return result;
+      }
+      function escapeDisallowedCharacter(code) {
+        var result = '\\';
+        switch (code) {
+        case 92:
+          result += '\\';
+          break;
+        case 10:
+          result += 'n';
+          break;
+        case 13:
+          result += 'r';
+          break;
+        case 8232:
+          result += 'u2028';
+          break;
+        case 8233:
+          result += 'u2029';
+          break;
+        default:
+          throw new Error('Incorrectly classified character');
+        }
+        return result;
+      }
+      function escapeDirective(str) {
+        var i, iz, code, quote;
+        quote = quotes === 'double' ? '"' : '\'';
+        for (i = 0, iz = str.length; i < iz; ++i) {
+          code = str.charCodeAt(i);
+          if (code === 39) {
+            quote = '"';
+            break;
+          } else if (code === 34) {
+            quote = '\'';
+            break;
+          } else if (code === 92) {
+            ++i;
+          }
+        }
+        return quote + str + quote;
+      }
+      function escapeString(str) {
+        var result = '', i, len, code, singleQuotes = 0, doubleQuotes = 0, single, quote;
+        for (i = 0, len = str.length; i < len; ++i) {
+          code = str.charCodeAt(i);
+          if (code === 39) {
+            ++singleQuotes;
+          } else if (code === 34) {
+            ++doubleQuotes;
+          } else if (code === 47 && json) {
+            result += '\\';
+          } else if (esutils.code.isLineTerminator(code) || code === 92) {
+            result += escapeDisallowedCharacter(code);
+            continue;
+          } else if (json && code < 32 || !(json || escapeless || code >= 32 && code <= 126)) {
+            result += escapeAllowedCharacter(code, str.charCodeAt(i + 1));
+            continue;
+          }
+          result += String.fromCharCode(code);
+        }
+        single = !(quotes === 'double' || quotes === 'auto' && doubleQuotes < singleQuotes);
+        quote = single ? '\'' : '"';
+        if (!(single ? singleQuotes : doubleQuotes)) {
+          return quote + result + quote;
+        }
+        str = result;
+        result = quote;
+        for (i = 0, len = str.length; i < len; ++i) {
+          code = str.charCodeAt(i);
+          if (code === 39 && single || code === 34 && !single) {
+            result += '\\';
+          }
+          result += String.fromCharCode(code);
+        }
+        return result + quote;
+      }
+      function flattenToString(arr) {
+        var i, iz, elem, result = '';
+        for (i = 0, iz = arr.length; i < iz; ++i) {
+          elem = arr[i];
+          result += isArray(elem) ? flattenToString(elem) : elem;
+        }
+        return result;
+      }
+      function toSourceNodeWhenNeeded(generated, node) {
+        if (!sourceMap) {
+          if (isArray(generated)) {
+            return flattenToString(generated);
+          } else {
+            return generated;
+          }
+        }
+        if (node == null) {
+          if (generated instanceof SourceNode) {
+            return generated;
+          } else {
+            node = {};
+          }
+        }
+        if (node.loc == null) {
+          return new SourceNode(null, null, sourceMap, generated, node.name || null);
+        }
+        return new SourceNode(node.loc.start.line, node.loc.start.column, sourceMap === true ? node.loc.source || null : sourceMap, generated, node.name || null);
+      }
+      function noEmptySpace() {
+        return space ? space : ' ';
+      }
+      function join(left, right) {
+        var leftSource = toSourceNodeWhenNeeded(left).toString(), rightSource = toSourceNodeWhenNeeded(right).toString(), leftCharCode = leftSource.charCodeAt(leftSource.length - 1), rightCharCode = rightSource.charCodeAt(0);
+        if ((leftCharCode === 43 || leftCharCode === 45) && leftCharCode === rightCharCode || esutils.code.isIdentifierPart(leftCharCode) && esutils.code.isIdentifierPart(rightCharCode) || leftCharCode === 47 && rightCharCode === 105) {
+          return [
+            left,
+            noEmptySpace(),
+            right
+          ];
+        } else if (esutils.code.isWhiteSpace(leftCharCode) || esutils.code.isLineTerminator(leftCharCode) || esutils.code.isWhiteSpace(rightCharCode) || esutils.code.isLineTerminator(rightCharCode)) {
+          return [
+            left,
+            right
+          ];
+        }
+        return [
+          left,
+          space,
+          right
+        ];
+      }
+      function addIndent(stmt) {
+        return [
+          base,
+          stmt
+        ];
+      }
+      function withIndent(fn) {
+        var previousBase, result;
+        previousBase = base;
+        base += indent;
+        result = fn.call(this, base);
+        base = previousBase;
+        return result;
+      }
+      function calculateSpaces(str) {
+        var i;
+        for (i = str.length - 1; i >= 0; --i) {
+          if (esutils.code.isLineTerminator(str.charCodeAt(i))) {
+            break;
+          }
+        }
+        return str.length - 1 - i;
+      }
+      function adjustMultilineComment(value, specialBase) {
+        var array, i, len, line, j, spaces, previousBase, sn;
+        array = value.split(/\r\n|[\r\n]/);
+        spaces = Number.MAX_VALUE;
+        for (i = 1, len = array.length; i < len; ++i) {
+          line = array[i];
+          j = 0;
+          while (j < line.length && esutils.code.isWhiteSpace(line.charCodeAt(j))) {
+            ++j;
+          }
+          if (spaces > j) {
+            spaces = j;
+          }
+        }
+        if (typeof specialBase !== 'undefined') {
+          previousBase = base;
+          if (array[1][spaces] === '*') {
+            specialBase += ' ';
+          }
+          base = specialBase;
+        } else {
+          if (spaces & 1) {
+            --spaces;
+          }
+          previousBase = base;
+        }
+        for (i = 1, len = array.length; i < len; ++i) {
+          sn = toSourceNodeWhenNeeded(addIndent(array[i].slice(spaces)));
+          array[i] = sourceMap ? sn.join('') : sn;
+        }
+        base = previousBase;
+        return array.join('\n');
+      }
+      function generateComment(comment, specialBase) {
+        if (comment.type === 'Line') {
+          if (endsWithLineTerminator(comment.value)) {
+            return '//' + comment.value;
+          } else {
+            return '//' + comment.value + '\n';
+          }
+        }
+        if (extra.format.indent.adjustMultilineComment && /[\n\r]/.test(comment.value)) {
+          return adjustMultilineComment('/*' + comment.value + '*/', specialBase);
+        }
+        return '/*' + comment.value + '*/';
+      }
+      function addComments(stmt, result) {
+        var i, len, comment, save, tailingToStatement, specialBase, fragment;
+        if (stmt.leadingComments && stmt.leadingComments.length > 0) {
+          save = result;
+          comment = stmt.leadingComments[0];
+          result = [];
+          if (safeConcatenation && stmt.type === Syntax.Program && stmt.body.length === 0) {
+            result.push('\n');
+          }
+          result.push(generateComment(comment));
+          if (!endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+            result.push('\n');
+          }
+          for (i = 1, len = stmt.leadingComments.length; i < len; ++i) {
+            comment = stmt.leadingComments[i];
+            fragment = [generateComment(comment)];
+            if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+              fragment.push('\n');
+            }
+            result.push(addIndent(fragment));
+          }
+          result.push(addIndent(save));
+        }
+        if (stmt.trailingComments) {
+          tailingToStatement = !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString());
+          specialBase = stringRepeat(' ', calculateSpaces(toSourceNodeWhenNeeded([
+            base,
+            result,
+            indent
+          ]).toString()));
+          for (i = 0, len = stmt.trailingComments.length; i < len; ++i) {
+            comment = stmt.trailingComments[i];
+            if (tailingToStatement) {
+              if (i === 0) {
+                result = [
+                  result,
+                  indent
+                ];
+              } else {
+                result = [
+                  result,
+                  specialBase
+                ];
+              }
+              result.push(generateComment(comment, specialBase));
+            } else {
+              result = [
+                result,
+                addIndent(generateComment(comment))
+              ];
+            }
+            if (i !== len - 1 && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+              result = [
+                result,
+                '\n'
+              ];
+            }
+          }
+        }
+        return result;
+      }
+      function parenthesize(text, current, should) {
+        if (current < should) {
+          return [
+            '(',
+            text,
+            ')'
+          ];
+        }
+        return text;
+      }
+      function maybeBlock(stmt, semicolonOptional, functionBody) {
+        var result, noLeadingComment;
+        noLeadingComment = !extra.comment || !stmt.leadingComments;
+        if (stmt.type === Syntax.BlockStatement && noLeadingComment) {
+          return [
+            space,
+            generateStatement(stmt, { functionBody: functionBody })
+          ];
+        }
+        if (stmt.type === Syntax.EmptyStatement && noLeadingComment) {
+          return ';';
+        }
+        withIndent(function () {
+          result = [
+            newline,
+            addIndent(generateStatement(stmt, {
+              semicolonOptional: semicolonOptional,
+              functionBody: functionBody
+            }))
+          ];
+        });
+        return result;
+      }
+      function maybeBlockSuffix(stmt, result) {
+        var ends = endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString());
+        if (stmt.type === Syntax.BlockStatement && (!extra.comment || !stmt.leadingComments) && !ends) {
+          return [
+            result,
+            space
+          ];
+        }
+        if (ends) {
+          return [
+            result,
+            base
+          ];
+        }
+        return [
+          result,
+          newline,
+          base
+        ];
+      }
+      function generateVerbatimString(string) {
+        var i, iz, result;
+        result = string.split(/\r\n|\n/);
+        for (i = 1, iz = result.length; i < iz; i++) {
+          result[i] = newline + base + result[i];
+        }
+        return result;
+      }
+      function generateVerbatim(expr, option) {
+        var verbatim, result, prec;
+        verbatim = expr[extra.verbatim];
+        if (typeof verbatim === 'string') {
+          result = parenthesize(generateVerbatimString(verbatim), Precedence.Sequence, option.precedence);
+        } else {
+          result = generateVerbatimString(verbatim.content);
+          prec = verbatim.precedence != null ? verbatim.precedence : Precedence.Sequence;
+          result = parenthesize(result, prec, option.precedence);
+        }
+        return toSourceNodeWhenNeeded(result, expr);
+      }
+      function generateIdentifier(node) {
+        return toSourceNodeWhenNeeded(node.name, node);
+      }
+      function generatePattern(node, options) {
+        var result;
+        if (node.type === Syntax.Identifier) {
+          result = generateIdentifier(node);
+        } else {
+          result = generateExpression(node, {
+            precedence: options.precedence,
+            allowIn: options.allowIn,
+            allowCall: true
+          });
+        }
+        return result;
+      }
+      function generateFunctionBody(node) {
+        var result, i, len, expr, arrow;
+        arrow = node.type === Syntax.ArrowFunctionExpression;
+        if (arrow && node.params.length === 1 && node.params[0].type === Syntax.Identifier) {
+          result = [generateIdentifier(node.params[0])];
+        } else {
+          result = ['('];
+          for (i = 0, len = node.params.length; i < len; ++i) {
+            result.push(generatePattern(node.params[i], {
+              precedence: Precedence.Assignment,
+              allowIn: true
+            }));
+            if (i + 1 < len) {
+              result.push(',' + space);
+            }
+          }
+          result.push(')');
+        }
+        if (arrow) {
+          result.push(space);
+          result.push('=>');
+        }
+        if (node.expression) {
+          result.push(space);
+          expr = generateExpression(node.body, {
+            precedence: Precedence.Assignment,
+            allowIn: true,
+            allowCall: true
+          });
+          if (expr.toString().charAt(0) === '{') {
+            expr = [
+              '(',
+              expr,
+              ')'
+            ];
+          }
+          result.push(expr);
+        } else {
+          result.push(maybeBlock(node.body, false, true));
+        }
+        return result;
+      }
+      function generateIterationForStatement(operator, stmt, semicolonIsNotNeeded) {
+        var result = ['for' + space + '('];
+        withIndent(function () {
+          if (stmt.left.type === Syntax.VariableDeclaration) {
+            withIndent(function () {
+              result.push(stmt.left.kind + noEmptySpace());
+              result.push(generateStatement(stmt.left.declarations[0], { allowIn: false }));
+            });
+          } else {
+            result.push(generateExpression(stmt.left, {
+              precedence: Precedence.Call,
+              allowIn: true,
+              allowCall: true
+            }));
+          }
+          result = join(result, operator);
+          result = [
+            join(result, generateExpression(stmt.right, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true
+            })),
+            ')'
+          ];
+        });
+        result.push(maybeBlock(stmt.body, semicolonIsNotNeeded));
+        return result;
+      }
+      function generateExpression(expr, option) {
+        var result, precedence, type, currentPrecedence, i, len, raw, fragment, multiline, leftCharCode, leftSource, rightCharCode, allowIn, allowCall, allowUnparenthesizedNew, property, isGenerator;
+        precedence = option.precedence;
+        allowIn = option.allowIn;
+        allowCall = option.allowCall;
+        type = expr.type || option.type;
+        if (extra.verbatim && expr.hasOwnProperty(extra.verbatim)) {
+          return generateVerbatim(expr, option);
+        }
+        switch (type) {
+        case Syntax.SequenceExpression:
+          result = [];
+          allowIn |= Precedence.Sequence < precedence;
+          for (i = 0, len = expr.expressions.length; i < len; ++i) {
+            result.push(generateExpression(expr.expressions[i], {
+              precedence: Precedence.Assignment,
+              allowIn: allowIn,
+              allowCall: true
+            }));
+            if (i + 1 < len) {
+              result.push(',' + space);
+            }
+          }
+          result = parenthesize(result, Precedence.Sequence, precedence);
+          break;
+        case Syntax.AssignmentExpression:
+          allowIn |= Precedence.Assignment < precedence;
+          result = parenthesize([
+            generateExpression(expr.left, {
+              precedence: Precedence.Call,
+              allowIn: allowIn,
+              allowCall: true
+            }),
+            space + expr.operator + space,
+            generateExpression(expr.right, {
+              precedence: Precedence.Assignment,
+              allowIn: allowIn,
+              allowCall: true
+            })
+          ], Precedence.Assignment, precedence);
+          break;
+        case Syntax.ArrowFunctionExpression:
+          allowIn |= Precedence.ArrowFunction < precedence;
+          result = parenthesize(generateFunctionBody(expr), Precedence.ArrowFunction, precedence);
+          break;
+        case Syntax.ConditionalExpression:
+          allowIn |= Precedence.Conditional < precedence;
+          result = parenthesize([
+            generateExpression(expr.test, {
+              precedence: Precedence.LogicalOR,
+              allowIn: allowIn,
+              allowCall: true
+            }),
+            space + '?' + space,
+            generateExpression(expr.consequent, {
+              precedence: Precedence.Assignment,
+              allowIn: allowIn,
+              allowCall: true
+            }),
+            space + ':' + space,
+            generateExpression(expr.alternate, {
+              precedence: Precedence.Assignment,
+              allowIn: allowIn,
+              allowCall: true
+            })
+          ], Precedence.Conditional, precedence);
+          break;
+        case Syntax.LogicalExpression:
+        case Syntax.BinaryExpression:
+          currentPrecedence = BinaryPrecedence[expr.operator];
+          allowIn |= currentPrecedence < precedence;
+          fragment = generateExpression(expr.left, {
+            precedence: currentPrecedence,
+            allowIn: allowIn,
+            allowCall: true
+          });
+          leftSource = fragment.toString();
+          if (leftSource.charCodeAt(leftSource.length - 1) === 47 && esutils.code.isIdentifierPart(expr.operator.charCodeAt(0))) {
+            result = [
+              fragment,
+              noEmptySpace(),
+              expr.operator
+            ];
+          } else {
+            result = join(fragment, expr.operator);
+          }
+          fragment = generateExpression(expr.right, {
+            precedence: currentPrecedence + 1,
+            allowIn: allowIn,
+            allowCall: true
+          });
+          if (expr.operator === '/' && fragment.toString().charAt(0) === '/' || expr.operator.slice(-1) === '<' && fragment.toString().slice(0, 3) === '!--') {
+            result.push(noEmptySpace());
+            result.push(fragment);
+          } else {
+            result = join(result, fragment);
+          }
+          if (expr.operator === 'in' && !allowIn) {
+            result = [
+              '(',
+              result,
+              ')'
+            ];
+          } else {
+            result = parenthesize(result, currentPrecedence, precedence);
+          }
+          break;
+        case Syntax.CallExpression:
+          result = [generateExpression(expr.callee, {
+              precedence: Precedence.Call,
+              allowIn: true,
+              allowCall: true,
+              allowUnparenthesizedNew: false
+            })];
+          result.push('(');
+          for (i = 0, len = expr['arguments'].length; i < len; ++i) {
+            result.push(generateExpression(expr['arguments'][i], {
+              precedence: Precedence.Assignment,
+              allowIn: true,
+              allowCall: true
+            }));
+            if (i + 1 < len) {
+              result.push(',' + space);
+            }
+          }
+          result.push(')');
+          if (!allowCall) {
+            result = [
+              '(',
+              result,
+              ')'
+            ];
+          } else {
+            result = parenthesize(result, Precedence.Call, precedence);
+          }
+          break;
+        case Syntax.NewExpression:
+          len = expr['arguments'].length;
+          allowUnparenthesizedNew = option.allowUnparenthesizedNew === undefined || option.allowUnparenthesizedNew;
+          result = join('new', generateExpression(expr.callee, {
+            precedence: Precedence.New,
+            allowIn: true,
+            allowCall: false,
+            allowUnparenthesizedNew: allowUnparenthesizedNew && !parentheses && len === 0
+          }));
+          if (!allowUnparenthesizedNew || parentheses || len > 0) {
+            result.push('(');
+            for (i = 0; i < len; ++i) {
+              result.push(generateExpression(expr['arguments'][i], {
+                precedence: Precedence.Assignment,
+                allowIn: true,
+                allowCall: true
+              }));
+              if (i + 1 < len) {
+                result.push(',' + space);
+              }
+            }
+            result.push(')');
+          }
+          result = parenthesize(result, Precedence.New, precedence);
+          break;
+        case Syntax.MemberExpression:
+          result = [generateExpression(expr.object, {
+              precedence: Precedence.Call,
+              allowIn: true,
+              allowCall: allowCall,
+              allowUnparenthesizedNew: false
+            })];
+          if (expr.computed) {
+            result.push('[');
+            result.push(generateExpression(expr.property, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: allowCall
+            }));
+            result.push(']');
+          } else {
+            if (expr.object.type === Syntax.Literal && typeof expr.object.value === 'number') {
+              fragment = toSourceNodeWhenNeeded(result).toString();
+              if (fragment.indexOf('.') < 0 && !/[eExX]/.test(fragment) && esutils.code.isDecimalDigit(fragment.charCodeAt(fragment.length - 1)) && !(fragment.length >= 2 && fragment.charCodeAt(0) === 48)) {
+                result.push('.');
+              }
+            }
+            result.push('.');
+            result.push(generateIdentifier(expr.property));
+          }
+          result = parenthesize(result, Precedence.Member, precedence);
+          break;
+        case Syntax.UnaryExpression:
+          fragment = generateExpression(expr.argument, {
+            precedence: Precedence.Unary,
+            allowIn: true,
+            allowCall: true
+          });
+          if (space === '') {
+            result = join(expr.operator, fragment);
+          } else {
+            result = [expr.operator];
+            if (expr.operator.length > 2) {
+              result = join(result, fragment);
+            } else {
+              leftSource = toSourceNodeWhenNeeded(result).toString();
+              leftCharCode = leftSource.charCodeAt(leftSource.length - 1);
+              rightCharCode = fragment.toString().charCodeAt(0);
+              if ((leftCharCode === 43 || leftCharCode === 45) && leftCharCode === rightCharCode || esutils.code.isIdentifierPart(leftCharCode) && esutils.code.isIdentifierPart(rightCharCode)) {
+                result.push(noEmptySpace());
+                result.push(fragment);
+              } else {
+                result.push(fragment);
+              }
+            }
+          }
+          result = parenthesize(result, Precedence.Unary, precedence);
+          break;
+        case Syntax.YieldExpression:
+          if (expr.delegate) {
+            result = 'yield*';
+          } else {
+            result = 'yield';
+          }
+          if (expr.argument) {
+            result = join(result, generateExpression(expr.argument, {
+              precedence: Precedence.Yield,
+              allowIn: true,
+              allowCall: true
+            }));
+          }
+          result = parenthesize(result, Precedence.Yield, precedence);
+          break;
+        case Syntax.UpdateExpression:
+          if (expr.prefix) {
+            result = parenthesize([
+              expr.operator,
+              generateExpression(expr.argument, {
+                precedence: Precedence.Unary,
+                allowIn: true,
+                allowCall: true
+              })
+            ], Precedence.Unary, precedence);
+          } else {
+            result = parenthesize([
+              generateExpression(expr.argument, {
+                precedence: Precedence.Postfix,
+                allowIn: true,
+                allowCall: true
+              }),
+              expr.operator
+            ], Precedence.Postfix, precedence);
+          }
+          break;
+        case Syntax.FunctionExpression:
+          isGenerator = expr.generator && !extra.moz.starlessGenerator;
+          result = isGenerator ? 'function*' : 'function';
+          if (expr.id) {
+            result = [
+              result,
+              isGenerator ? space : noEmptySpace(),
+              generateIdentifier(expr.id),
+              generateFunctionBody(expr)
+            ];
+          } else {
+            result = [
+              result + space,
+              generateFunctionBody(expr)
+            ];
+          }
+          break;
+        case Syntax.ArrayPattern:
+        case Syntax.ArrayExpression:
+          if (!expr.elements.length) {
+            result = '[]';
+            break;
+          }
+          multiline = expr.elements.length > 1;
+          result = [
+            '[',
+            multiline ? newline : ''
+          ];
+          withIndent(function (indent) {
+            for (i = 0, len = expr.elements.length; i < len; ++i) {
+              if (!expr.elements[i]) {
+                if (multiline) {
+                  result.push(indent);
+                }
+                if (i + 1 === len) {
+                  result.push(',');
+                }
+              } else {
+                result.push(multiline ? indent : '');
+                result.push(generateExpression(expr.elements[i], {
+                  precedence: Precedence.Assignment,
+                  allowIn: true,
+                  allowCall: true
+                }));
+              }
+              if (i + 1 < len) {
+                result.push(',' + (multiline ? newline : space));
+              }
+            }
+          });
+          if (multiline && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+            result.push(newline);
+          }
+          result.push(multiline ? base : '');
+          result.push(']');
+          break;
+        case Syntax.Property:
+          if (expr.kind === 'get' || expr.kind === 'set') {
+            result = [
+              expr.kind,
+              noEmptySpace(),
+              generateExpression(expr.key, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              generateFunctionBody(expr.value)
+            ];
+          } else {
+            if (expr.shorthand) {
+              result = generateExpression(expr.key, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              });
+            } else if (expr.method) {
+              result = [];
+              if (expr.value.generator) {
+                result.push('*');
+              }
+              result.push(generateExpression(expr.key, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }));
+              result.push(generateFunctionBody(expr.value));
+            } else {
+              result = [
+                generateExpression(expr.key, {
+                  precedence: Precedence.Sequence,
+                  allowIn: true,
+                  allowCall: true
+                }),
+                ':' + space,
+                generateExpression(expr.value, {
+                  precedence: Precedence.Assignment,
+                  allowIn: true,
+                  allowCall: true
+                })
+              ];
+            }
+          }
+          break;
+        case Syntax.ObjectExpression:
+          if (!expr.properties.length) {
+            result = '{}';
+            break;
+          }
+          multiline = expr.properties.length > 1;
+          withIndent(function () {
+            fragment = generateExpression(expr.properties[0], {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true,
+              type: Syntax.Property
+            });
+          });
+          if (!multiline) {
+            if (!hasLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+              result = [
+                '{',
+                space,
+                fragment,
+                space,
+                '}'
+              ];
+              break;
+            }
+          }
+          withIndent(function (indent) {
+            result = [
+              '{',
+              newline,
+              indent,
+              fragment
+            ];
+            if (multiline) {
+              result.push(',' + newline);
+              for (i = 1, len = expr.properties.length; i < len; ++i) {
+                result.push(indent);
+                result.push(generateExpression(expr.properties[i], {
+                  precedence: Precedence.Sequence,
+                  allowIn: true,
+                  allowCall: true,
+                  type: Syntax.Property
+                }));
+                if (i + 1 < len) {
+                  result.push(',' + newline);
+                }
+              }
+            }
+          });
+          if (!endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+            result.push(newline);
+          }
+          result.push(base);
+          result.push('}');
+          break;
+        case Syntax.ObjectPattern:
+          if (!expr.properties.length) {
+            result = '{}';
+            break;
+          }
+          multiline = false;
+          if (expr.properties.length === 1) {
+            property = expr.properties[0];
+            if (property.value.type !== Syntax.Identifier) {
+              multiline = true;
+            }
+          } else {
+            for (i = 0, len = expr.properties.length; i < len; ++i) {
+              property = expr.properties[i];
+              if (!property.shorthand) {
+                multiline = true;
+                break;
+              }
+            }
+          }
+          result = [
+            '{',
+            multiline ? newline : ''
+          ];
+          withIndent(function (indent) {
+            for (i = 0, len = expr.properties.length; i < len; ++i) {
+              result.push(multiline ? indent : '');
+              result.push(generateExpression(expr.properties[i], {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }));
+              if (i + 1 < len) {
+                result.push(',' + (multiline ? newline : space));
+              }
+            }
+          });
+          if (multiline && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+            result.push(newline);
+          }
+          result.push(multiline ? base : '');
+          result.push('}');
+          break;
+        case Syntax.ThisExpression:
+          result = 'this';
+          break;
+        case Syntax.Identifier:
+          result = generateIdentifier(expr);
+          break;
+        case Syntax.Literal:
+          if (expr.hasOwnProperty('raw') && parse && extra.raw) {
+            try {
+              raw = parse(expr.raw).body[0].expression;
+              if (raw.type === Syntax.Literal) {
+                if (raw.value === expr.value) {
+                  result = expr.raw;
+                  break;
+                }
+              }
+            } catch (e) {
+            }
+          }
+          if (expr.value === null) {
+            result = 'null';
+            break;
+          }
+          if (typeof expr.value === 'string') {
+            result = escapeString(expr.value);
+            break;
+          }
+          if (typeof expr.value === 'number') {
+            result = generateNumber(expr.value);
+            break;
+          }
+          if (typeof expr.value === 'boolean') {
+            result = expr.value ? 'true' : 'false';
+            break;
+          }
+          result = generateRegExp(expr.value);
+          break;
+        case Syntax.GeneratorExpression:
+        case Syntax.ComprehensionExpression:
+          result = type === Syntax.GeneratorExpression ? ['('] : ['['];
+          if (extra.moz.comprehensionExpressionStartsWithAssignment) {
+            fragment = generateExpression(expr.body, {
+              precedence: Precedence.Assignment,
+              allowIn: true,
+              allowCall: true
+            });
+            result.push(fragment);
+          }
+          if (expr.blocks) {
+            withIndent(function () {
+              for (i = 0, len = expr.blocks.length; i < len; ++i) {
+                fragment = generateExpression(expr.blocks[i], {
+                  precedence: Precedence.Sequence,
+                  allowIn: true,
+                  allowCall: true
+                });
+                if (i > 0 || extra.moz.comprehensionExpressionStartsWithAssignment) {
+                  result = join(result, fragment);
+                } else {
+                  result.push(fragment);
+                }
+              }
+            });
+          }
+          if (expr.filter) {
+            result = join(result, 'if' + space);
+            fragment = generateExpression(expr.filter, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true
+            });
+            if (extra.moz.parenthesizedComprehensionBlock) {
+              result = join(result, [
+                '(',
+                fragment,
+                ')'
+              ]);
+            } else {
+              result = join(result, fragment);
+            }
+          }
+          if (!extra.moz.comprehensionExpressionStartsWithAssignment) {
+            fragment = generateExpression(expr.body, {
+              precedence: Precedence.Assignment,
+              allowIn: true,
+              allowCall: true
+            });
+            result = join(result, fragment);
+          }
+          result.push(type === Syntax.GeneratorExpression ? ')' : ']');
+          break;
+        case Syntax.ComprehensionBlock:
+          if (expr.left.type === Syntax.VariableDeclaration) {
+            fragment = [
+              expr.left.kind,
+              noEmptySpace(),
+              generateStatement(expr.left.declarations[0], { allowIn: false })
+            ];
+          } else {
+            fragment = generateExpression(expr.left, {
+              precedence: Precedence.Call,
+              allowIn: true,
+              allowCall: true
+            });
+          }
+          fragment = join(fragment, expr.of ? 'of' : 'in');
+          fragment = join(fragment, generateExpression(expr.right, {
+            precedence: Precedence.Sequence,
+            allowIn: true,
+            allowCall: true
+          }));
+          if (extra.moz.parenthesizedComprehensionBlock) {
+            result = [
+              'for' + space + '(',
+              fragment,
+              ')'
+            ];
+          } else {
+            result = join('for' + space, fragment);
+          }
+          break;
+        default:
+          throw new Error('Unknown expression type: ' + expr.type);
+        }
+        if (extra.comment) {
+          result = addComments(expr, result);
+        }
+        return toSourceNodeWhenNeeded(result, expr);
+      }
+      function generateStatement(stmt, option) {
+        var i, len, result, node, allowIn, functionBody, directiveContext, fragment, semicolon, isGenerator;
+        allowIn = true;
+        semicolon = ';';
+        functionBody = false;
+        directiveContext = false;
+        if (option) {
+          allowIn = option.allowIn === undefined || option.allowIn;
+          if (!semicolons && option.semicolonOptional === true) {
+            semicolon = '';
+          }
+          functionBody = option.functionBody;
+          directiveContext = option.directiveContext;
+        }
+        switch (stmt.type) {
+        case Syntax.BlockStatement:
+          result = [
+            '{',
+            newline
+          ];
+          withIndent(function () {
+            for (i = 0, len = stmt.body.length; i < len; ++i) {
+              fragment = addIndent(generateStatement(stmt.body[i], {
+                semicolonOptional: i === len - 1,
+                directiveContext: functionBody
+              }));
+              result.push(fragment);
+              if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+                result.push(newline);
+              }
+            }
+          });
+          result.push(addIndent('}'));
+          break;
+        case Syntax.BreakStatement:
+          if (stmt.label) {
+            result = 'break ' + stmt.label.name + semicolon;
+          } else {
+            result = 'break' + semicolon;
+          }
+          break;
+        case Syntax.ContinueStatement:
+          if (stmt.label) {
+            result = 'continue ' + stmt.label.name + semicolon;
+          } else {
+            result = 'continue' + semicolon;
+          }
+          break;
+        case Syntax.DirectiveStatement:
+          if (extra.raw && stmt.raw) {
+            result = stmt.raw + semicolon;
+          } else {
+            result = escapeDirective(stmt.directive) + semicolon;
+          }
+          break;
+        case Syntax.DoWhileStatement:
+          result = join('do', maybeBlock(stmt.body));
+          result = maybeBlockSuffix(stmt.body, result);
+          result = join(result, [
+            'while' + space + '(',
+            generateExpression(stmt.test, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true
+            }),
+            ')' + semicolon
+          ]);
+          break;
+        case Syntax.CatchClause:
+          withIndent(function () {
+            var guard;
+            result = [
+              'catch' + space + '(',
+              generateExpression(stmt.param, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              ')'
+            ];
+            if (stmt.guard) {
+              guard = generateExpression(stmt.guard, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              });
+              result.splice(2, 0, ' if ', guard);
+            }
+          });
+          result.push(maybeBlock(stmt.body));
+          break;
+        case Syntax.DebuggerStatement:
+          result = 'debugger' + semicolon;
+          break;
+        case Syntax.EmptyStatement:
+          result = ';';
+          break;
+        case Syntax.ExportDeclaration:
+          result = 'export ';
+          if (stmt.declaration) {
+            result = [
+              result,
+              generateStatement(stmt.declaration, { semicolonOptional: semicolon === '' })
+            ];
+            break;
+          }
+          break;
+        case Syntax.ExpressionStatement:
+          result = [generateExpression(stmt.expression, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true
+            })];
+          fragment = toSourceNodeWhenNeeded(result).toString();
+          if (fragment.charAt(0) === '{' || fragment.slice(0, 8) === 'function' && '* ('.indexOf(fragment.charAt(8)) >= 0 || directive && directiveContext && stmt.expression.type === Syntax.Literal && typeof stmt.expression.value === 'string') {
+            result = [
+              '(',
+              result,
+              ')' + semicolon
+            ];
+          } else {
+            result.push(semicolon);
+          }
+          break;
+        case Syntax.VariableDeclarator:
+          if (stmt.init) {
+            result = [
+              generateExpression(stmt.id, {
+                precedence: Precedence.Assignment,
+                allowIn: allowIn,
+                allowCall: true
+              }),
+              space,
+              '=',
+              space,
+              generateExpression(stmt.init, {
+                precedence: Precedence.Assignment,
+                allowIn: allowIn,
+                allowCall: true
+              })
+            ];
+          } else {
+            result = generatePattern(stmt.id, {
+              precedence: Precedence.Assignment,
+              allowIn: allowIn
+            });
+          }
+          break;
+        case Syntax.VariableDeclaration:
+          result = [stmt.kind];
+          if (stmt.declarations.length === 1 && stmt.declarations[0].init && stmt.declarations[0].init.type === Syntax.FunctionExpression) {
+            result.push(noEmptySpace());
+            result.push(generateStatement(stmt.declarations[0], { allowIn: allowIn }));
+          } else {
+            withIndent(function () {
+              node = stmt.declarations[0];
+              if (extra.comment && node.leadingComments) {
+                result.push('\n');
+                result.push(addIndent(generateStatement(node, { allowIn: allowIn })));
+              } else {
+                result.push(noEmptySpace());
+                result.push(generateStatement(node, { allowIn: allowIn }));
+              }
+              for (i = 1, len = stmt.declarations.length; i < len; ++i) {
+                node = stmt.declarations[i];
+                if (extra.comment && node.leadingComments) {
+                  result.push(',' + newline);
+                  result.push(addIndent(generateStatement(node, { allowIn: allowIn })));
+                } else {
+                  result.push(',' + space);
+                  result.push(generateStatement(node, { allowIn: allowIn }));
+                }
+              }
+            });
+          }
+          result.push(semicolon);
+          break;
+        case Syntax.ThrowStatement:
+          result = [
+            join('throw', generateExpression(stmt.argument, {
+              precedence: Precedence.Sequence,
+              allowIn: true,
+              allowCall: true
+            })),
+            semicolon
+          ];
+          break;
+        case Syntax.TryStatement:
+          result = [
+            'try',
+            maybeBlock(stmt.block)
+          ];
+          result = maybeBlockSuffix(stmt.block, result);
+          if (stmt.handlers) {
+            for (i = 0, len = stmt.handlers.length; i < len; ++i) {
+              result = join(result, generateStatement(stmt.handlers[i]));
+              if (stmt.finalizer || i + 1 !== len) {
+                result = maybeBlockSuffix(stmt.handlers[i].body, result);
+              }
+            }
+          } else {
+            stmt.guardedHandlers = stmt.guardedHandlers || [];
+            for (i = 0, len = stmt.guardedHandlers.length; i < len; ++i) {
+              result = join(result, generateStatement(stmt.guardedHandlers[i]));
+              if (stmt.finalizer || i + 1 !== len) {
+                result = maybeBlockSuffix(stmt.guardedHandlers[i].body, result);
+              }
+            }
+            if (stmt.handler) {
+              if (isArray(stmt.handler)) {
+                for (i = 0, len = stmt.handler.length; i < len; ++i) {
+                  result = join(result, generateStatement(stmt.handler[i]));
+                  if (stmt.finalizer || i + 1 !== len) {
+                    result = maybeBlockSuffix(stmt.handler[i].body, result);
+                  }
+                }
+              } else {
+                result = join(result, generateStatement(stmt.handler));
+                if (stmt.finalizer) {
+                  result = maybeBlockSuffix(stmt.handler.body, result);
+                }
+              }
+            }
+          }
+          if (stmt.finalizer) {
+            result = join(result, [
+              'finally',
+              maybeBlock(stmt.finalizer)
+            ]);
+          }
+          break;
+        case Syntax.SwitchStatement:
+          withIndent(function () {
+            result = [
+              'switch' + space + '(',
+              generateExpression(stmt.discriminant, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              ')' + space + '{' + newline
+            ];
+          });
+          if (stmt.cases) {
+            for (i = 0, len = stmt.cases.length; i < len; ++i) {
+              fragment = addIndent(generateStatement(stmt.cases[i], { semicolonOptional: i === len - 1 }));
+              result.push(fragment);
+              if (!endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+                result.push(newline);
+              }
+            }
+          }
+          result.push(addIndent('}'));
+          break;
+        case Syntax.SwitchCase:
+          withIndent(function () {
+            if (stmt.test) {
+              result = [
+                join('case', generateExpression(stmt.test, {
+                  precedence: Precedence.Sequence,
+                  allowIn: true,
+                  allowCall: true
+                })),
+                ':'
+              ];
+            } else {
+              result = ['default:'];
+            }
+            i = 0;
+            len = stmt.consequent.length;
+            if (len && stmt.consequent[0].type === Syntax.BlockStatement) {
+              fragment = maybeBlock(stmt.consequent[0]);
+              result.push(fragment);
+              i = 1;
+            }
+            if (i !== len && !endsWithLineTerminator(toSourceNodeWhenNeeded(result).toString())) {
+              result.push(newline);
+            }
+            for (; i < len; ++i) {
+              fragment = addIndent(generateStatement(stmt.consequent[i], { semicolonOptional: i === len - 1 && semicolon === '' }));
+              result.push(fragment);
+              if (i + 1 !== len && !endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+                result.push(newline);
+              }
+            }
+          });
+          break;
+        case Syntax.IfStatement:
+          withIndent(function () {
+            result = [
+              'if' + space + '(',
+              generateExpression(stmt.test, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              ')'
+            ];
+          });
+          if (stmt.alternate) {
+            result.push(maybeBlock(stmt.consequent));
+            result = maybeBlockSuffix(stmt.consequent, result);
+            if (stmt.alternate.type === Syntax.IfStatement) {
+              result = join(result, [
+                'else ',
+                generateStatement(stmt.alternate, { semicolonOptional: semicolon === '' })
+              ]);
+            } else {
+              result = join(result, join('else', maybeBlock(stmt.alternate, semicolon === '')));
+            }
+          } else {
+            result.push(maybeBlock(stmt.consequent, semicolon === ''));
+          }
+          break;
+        case Syntax.ForStatement:
+          withIndent(function () {
+            result = ['for' + space + '('];
+            if (stmt.init) {
+              if (stmt.init.type === Syntax.VariableDeclaration) {
+                result.push(generateStatement(stmt.init, { allowIn: false }));
+              } else {
+                result.push(generateExpression(stmt.init, {
+                  precedence: Precedence.Sequence,
+                  allowIn: false,
+                  allowCall: true
+                }));
+                result.push(';');
+              }
+            } else {
+              result.push(';');
+            }
+            if (stmt.test) {
+              result.push(space);
+              result.push(generateExpression(stmt.test, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }));
+              result.push(';');
+            } else {
+              result.push(';');
+            }
+            if (stmt.update) {
+              result.push(space);
+              result.push(generateExpression(stmt.update, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }));
+              result.push(')');
+            } else {
+              result.push(')');
+            }
+          });
+          result.push(maybeBlock(stmt.body, semicolon === ''));
+          break;
+        case Syntax.ForInStatement:
+          result = generateIterationForStatement('in', stmt, semicolon === '');
+          break;
+        case Syntax.ForOfStatement:
+          result = generateIterationForStatement('of', stmt, semicolon === '');
+          break;
+        case Syntax.LabeledStatement:
+          result = [
+            stmt.label.name + ':',
+            maybeBlock(stmt.body, semicolon === '')
+          ];
+          break;
+        case Syntax.Program:
+          len = stmt.body.length;
+          result = [safeConcatenation && len > 0 ? '\n' : ''];
+          for (i = 0; i < len; ++i) {
+            fragment = addIndent(generateStatement(stmt.body[i], {
+              semicolonOptional: !safeConcatenation && i === len - 1,
+              directiveContext: true
+            }));
+            result.push(fragment);
+            if (i + 1 < len && !endsWithLineTerminator(toSourceNodeWhenNeeded(fragment).toString())) {
+              result.push(newline);
+            }
+          }
+          break;
+        case Syntax.FunctionDeclaration:
+          isGenerator = stmt.generator && !extra.moz.starlessGenerator;
+          result = [
+            isGenerator ? 'function*' : 'function',
+            isGenerator ? space : noEmptySpace(),
+            generateIdentifier(stmt.id),
+            generateFunctionBody(stmt)
+          ];
+          break;
+        case Syntax.ReturnStatement:
+          if (stmt.argument) {
+            result = [
+              join('return', generateExpression(stmt.argument, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              })),
+              semicolon
+            ];
+          } else {
+            result = ['return' + semicolon];
+          }
+          break;
+        case Syntax.WhileStatement:
+          withIndent(function () {
+            result = [
+              'while' + space + '(',
+              generateExpression(stmt.test, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              ')'
+            ];
+          });
+          result.push(maybeBlock(stmt.body, semicolon === ''));
+          break;
+        case Syntax.WithStatement:
+          withIndent(function () {
+            result = [
+              'with' + space + '(',
+              generateExpression(stmt.object, {
+                precedence: Precedence.Sequence,
+                allowIn: true,
+                allowCall: true
+              }),
+              ')'
+            ];
+          });
+          result.push(maybeBlock(stmt.body, semicolon === ''));
+          break;
+        default:
+          throw new Error('Unknown statement type: ' + stmt.type);
+        }
+        if (extra.comment) {
+          result = addComments(stmt, result);
+        }
+        fragment = toSourceNodeWhenNeeded(result).toString();
+        if (stmt.type === Syntax.Program && !safeConcatenation && newline === '' && fragment.charAt(fragment.length - 1) === '\n') {
+          result = sourceMap ? toSourceNodeWhenNeeded(result).replaceRight(/\s+$/, '') : fragment.replace(/\s+$/, '');
+        }
+        return toSourceNodeWhenNeeded(result, stmt);
+      }
+      function generate(node, options) {
+        var defaultOptions = getDefaultOptions(), result, pair;
+        if (options != null) {
+          if (typeof options.indent === 'string') {
+            defaultOptions.format.indent.style = options.indent;
+          }
+          if (typeof options.base === 'number') {
+            defaultOptions.format.indent.base = options.base;
+          }
+          options = updateDeeply(defaultOptions, options);
+          indent = options.format.indent.style;
+          if (typeof options.base === 'string') {
+            base = options.base;
+          } else {
+            base = stringRepeat(indent, options.format.indent.base);
+          }
+        } else {
+          options = defaultOptions;
+          indent = options.format.indent.style;
+          base = stringRepeat(indent, options.format.indent.base);
+        }
+        json = options.format.json;
+        renumber = options.format.renumber;
+        hexadecimal = json ? false : options.format.hexadecimal;
+        quotes = json ? 'double' : options.format.quotes;
+        escapeless = options.format.escapeless;
+        newline = options.format.newline;
+        space = options.format.space;
+        if (options.format.compact) {
+          newline = space = indent = base = '';
+        }
+        parentheses = options.format.parentheses;
+        semicolons = options.format.semicolons;
+        safeConcatenation = options.format.safeConcatenation;
+        directive = options.directive;
+        parse = json ? null : options.parse;
+        sourceMap = options.sourceMap;
+        extra = options;
+        if (sourceMap) {
+          if (!exports.browser) {
+            SourceNode = require('./node_modules/source-map/lib/source-map.js').SourceNode;
+          } else {
+            SourceNode = global.sourceMap.SourceNode;
+          }
+        }
+        switch (node.type) {
+        case Syntax.BlockStatement:
+        case Syntax.BreakStatement:
+        case Syntax.CatchClause:
+        case Syntax.ContinueStatement:
+        case Syntax.DirectiveStatement:
+        case Syntax.DoWhileStatement:
+        case Syntax.DebuggerStatement:
+        case Syntax.EmptyStatement:
+        case Syntax.ExpressionStatement:
+        case Syntax.ForStatement:
+        case Syntax.ForInStatement:
+        case Syntax.ForOfStatement:
+        case Syntax.FunctionDeclaration:
+        case Syntax.IfStatement:
+        case Syntax.LabeledStatement:
+        case Syntax.Program:
+        case Syntax.ReturnStatement:
+        case Syntax.SwitchStatement:
+        case Syntax.SwitchCase:
+        case Syntax.ThrowStatement:
+        case Syntax.TryStatement:
+        case Syntax.VariableDeclaration:
+        case Syntax.VariableDeclarator:
+        case Syntax.WhileStatement:
+        case Syntax.WithStatement:
+          result = generateStatement(node);
+          break;
+        case Syntax.AssignmentExpression:
+        case Syntax.ArrayExpression:
+        case Syntax.ArrayPattern:
+        case Syntax.BinaryExpression:
+        case Syntax.CallExpression:
+        case Syntax.ConditionalExpression:
+        case Syntax.FunctionExpression:
+        case Syntax.Identifier:
+        case Syntax.Literal:
+        case Syntax.LogicalExpression:
+        case Syntax.MemberExpression:
+        case Syntax.NewExpression:
+        case Syntax.ObjectExpression:
+        case Syntax.ObjectPattern:
+        case Syntax.Property:
+        case Syntax.SequenceExpression:
+        case Syntax.ThisExpression:
+        case Syntax.UnaryExpression:
+        case Syntax.UpdateExpression:
+        case Syntax.YieldExpression:
+          result = generateExpression(node, {
+            precedence: Precedence.Sequence,
+            allowIn: true,
+            allowCall: true
+          });
+          break;
+        default:
+          throw new Error('Unknown node type: ' + node.type);
+        }
+        if (!sourceMap) {
+          return result.toString();
+        }
+        pair = result.toStringWithSourceMap({
+          file: options.file,
+          sourceRoot: options.sourceMapRoot
+        });
+        if (options.sourceContent) {
+          pair.map.setSourceContent(options.sourceMap, options.sourceContent);
+        }
+        if (options.sourceMapWithCode) {
+          return pair;
+        }
+        return pair.map.toString();
+      }
+      FORMAT_MINIFY = {
+        indent: {
+          style: '',
+          base: 0
+        },
+        renumber: true,
+        hexadecimal: true,
+        quotes: 'auto',
+        escapeless: true,
+        compact: true,
+        parentheses: false,
+        semicolons: false
+      };
+      FORMAT_DEFAULTS = getDefaultOptions().format;
+      exports.version = '1.3.2';
+      exports.generate = generate;
+      exports.attachComments = estraverse.attachComments;
+      exports.Precedence = updateDeeply({}, Precedence);
+      exports.browser = false;
+      exports.FORMAT_MINIFY = FORMAT_MINIFY;
+      exports.FORMAT_DEFAULTS = FORMAT_DEFAULTS;
+    }());
+  },
   './node_modules/prime/defer.js': function (require, module, exports, global) {
     var process = require('./node_modules/quickstart/browser/process.js');
     'use strict';
@@ -7354,6 +7352,58 @@
     });
     module.exports = $;
   },
+  './node_modules/elements/traversal.js': function (require, module, exports, global) {
+    'use strict';
+    var map = require('./node_modules/mout/array/map.js');
+    var slick = require('./node_modules/elements/node_modules/slick/index.js');
+    var $ = require('./node_modules/elements/base.js');
+    var walk = function (combinator, method) {
+      return function (expression) {
+        var parts = slick.parse(expression || '*');
+        expression = map(parts, function (part) {
+          return combinator + ' ' + part;
+        }).join(', ');
+        return this[method](expression);
+      };
+    };
+    $.implement({
+      search: function (expression) {
+        if (this.length === 1)
+          return $(slick.search(expression, this[0], new $()));
+        var buffer = [];
+        for (var i = 0, node; node = this[i]; i++)
+          buffer.push.apply(buffer, slick.search(expression, node));
+        return $(buffer).sort();
+      },
+      find: function (expression) {
+        if (this.length === 1)
+          return $(slick.find(expression, this[0]));
+        var buffer = [];
+        for (var i = 0, node; node = this[i]; i++)
+          buffer.push(slick.find(expression, node));
+        return $(buffer);
+      },
+      sort: function () {
+        return slick.sort(this);
+      },
+      matches: function (expression) {
+        return slick.matches(this[0], expression);
+      },
+      contains: function (node) {
+        return slick.contains(this[0], node);
+      },
+      nextSiblings: walk('~', 'search'),
+      nextSibling: walk('+', 'find'),
+      previousSiblings: walk('!~', 'search'),
+      previousSibling: walk('!+', 'find'),
+      children: walk('>', 'search'),
+      firstChild: walk('^', 'find'),
+      lastChild: walk('!^', 'find'),
+      parent: walk('!', 'find'),
+      parents: walk('!', 'search')
+    });
+    module.exports = $;
+  },
   './node_modules/elements/insertion.js': function (require, module, exports, global) {
     'use strict';
     var $ = require('./node_modules/elements/base.js');
@@ -7421,58 +7471,6 @@
         element.parentNode.replaceChild(this[0], element);
         return this;
       }
-    });
-    module.exports = $;
-  },
-  './node_modules/elements/traversal.js': function (require, module, exports, global) {
-    'use strict';
-    var map = require('./node_modules/mout/array/map.js');
-    var slick = require('./node_modules/elements/node_modules/slick/index.js');
-    var $ = require('./node_modules/elements/base.js');
-    var walk = function (combinator, method) {
-      return function (expression) {
-        var parts = slick.parse(expression || '*');
-        expression = map(parts, function (part) {
-          return combinator + ' ' + part;
-        }).join(', ');
-        return this[method](expression);
-      };
-    };
-    $.implement({
-      search: function (expression) {
-        if (this.length === 1)
-          return $(slick.search(expression, this[0], new $()));
-        var buffer = [];
-        for (var i = 0, node; node = this[i]; i++)
-          buffer.push.apply(buffer, slick.search(expression, node));
-        return $(buffer).sort();
-      },
-      find: function (expression) {
-        if (this.length === 1)
-          return $(slick.find(expression, this[0]));
-        var buffer = [];
-        for (var i = 0, node; node = this[i]; i++)
-          buffer.push(slick.find(expression, node));
-        return $(buffer);
-      },
-      sort: function () {
-        return slick.sort(this);
-      },
-      matches: function (expression) {
-        return slick.matches(this[0], expression);
-      },
-      contains: function (node) {
-        return slick.contains(this[0], node);
-      },
-      nextSiblings: walk('~', 'search'),
-      nextSibling: walk('+', 'find'),
-      previousSiblings: walk('!~', 'search'),
-      previousSibling: walk('!+', 'find'),
-      children: walk('>', 'search'),
-      firstChild: walk('^', 'find'),
-      lastChild: walk('!^', 'find'),
-      parent: walk('!', 'find'),
-      parents: walk('!', 'search')
     });
     module.exports = $;
   },
@@ -8958,12 +8956,6 @@
       };
     }());
   },
-  './node_modules/prime/node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
-    function hasOwn(obj, prop) {
-      return Object.prototype.hasOwnProperty.call(obj, prop);
-    }
-    module.exports = hasOwn;
-  },
   './node_modules/prime/node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
     var forOwn = require('./node_modules/prime/node_modules/mout/object/forOwn.js');
     function mixIn(target, objects) {
@@ -8980,6 +8972,12 @@
       this[key] = val;
     }
     module.exports = mixIn;
+  },
+  './node_modules/prime/node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
+    function hasOwn(obj, prop) {
+      return Object.prototype.hasOwnProperty.call(obj, prop);
+    }
+    module.exports = hasOwn;
   },
   './node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
     var identity = require('./node_modules/mout/function/identity.js');
@@ -9011,6 +9009,52 @@
     }
     module.exports = toString;
   },
+  './node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
+    var toString = require('./node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('./node_modules/mout/string/WHITE_SPACES.js');
+    function rtrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var end = str.length - 1, charLen = chars.length, found = true, i, c;
+      while (found && end >= 0) {
+        found = false;
+        i = -1;
+        c = str.charAt(end);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            end--;
+            break;
+          }
+        }
+      }
+      return end >= 0 ? str.substring(0, end + 1) : '';
+    }
+    module.exports = rtrim;
+  },
+  './node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
+    var toString = require('./node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('./node_modules/mout/string/WHITE_SPACES.js');
+    function ltrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
+      while (found && start < len) {
+        found = false;
+        i = -1;
+        c = str.charAt(start);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            start++;
+            break;
+          }
+        }
+      }
+      return start >= len ? '' : str.substr(start, len);
+    }
+    module.exports = ltrim;
+  },
   './node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
     module.exports = [
       ' ',
@@ -9039,52 +9083,6 @@
       '\u205F',
       '\u3000'
     ];
-  },
-  './node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
-    var toString = require('./node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('./node_modules/mout/string/WHITE_SPACES.js');
-    function ltrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
-      while (found && start < len) {
-        found = false;
-        i = -1;
-        c = str.charAt(start);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            start++;
-            break;
-          }
-        }
-      }
-      return start >= len ? '' : str.substr(start, len);
-    }
-    module.exports = ltrim;
-  },
-  './node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
-    var toString = require('./node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('./node_modules/mout/string/WHITE_SPACES.js');
-    function rtrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var end = str.length - 1, charLen = chars.length, found = true, i, c;
-      while (found && end >= 0) {
-        found = false;
-        i = -1;
-        c = str.charAt(end);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            end--;
-            break;
-          }
-        }
-      }
-      return end >= 0 ? str.substring(0, end + 1) : '';
-    }
-    module.exports = rtrim;
   },
   './node_modules/source-map/lib/source-map/source-map-generator.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
@@ -11321,61 +11319,6 @@
     }
     module.exports = deepMatches;
   },
-  './node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('./node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      var base64 = require('./node_modules/source-map/lib/source-map/base64.js');
-      var VLQ_BASE_SHIFT = 5;
-      var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
-      var VLQ_BASE_MASK = VLQ_BASE - 1;
-      var VLQ_CONTINUATION_BIT = VLQ_BASE;
-      function toVLQSigned(aValue) {
-        return aValue < 0 ? (-aValue << 1) + 1 : (aValue << 1) + 0;
-      }
-      function fromVLQSigned(aValue) {
-        var isNegative = (aValue & 1) === 1;
-        var shifted = aValue >> 1;
-        return isNegative ? -shifted : shifted;
-      }
-      exports.encode = function base64VLQ_encode(aValue) {
-        var encoded = '';
-        var digit;
-        var vlq = toVLQSigned(aValue);
-        do {
-          digit = vlq & VLQ_BASE_MASK;
-          vlq >>>= VLQ_BASE_SHIFT;
-          if (vlq > 0) {
-            digit |= VLQ_CONTINUATION_BIT;
-          }
-          encoded += base64.encode(digit);
-        } while (vlq > 0);
-        return encoded;
-      };
-      exports.decode = function base64VLQ_decode(aStr) {
-        var i = 0;
-        var strLen = aStr.length;
-        var result = 0;
-        var shift = 0;
-        var continuation, digit;
-        do {
-          if (i >= strLen) {
-            throw new Error('Expected more digits in base 64 VLQ value.');
-          }
-          digit = base64.decode(aStr.charAt(i++));
-          continuation = !!(digit & VLQ_CONTINUATION_BIT);
-          digit &= VLQ_BASE_MASK;
-          result = result + (digit << shift);
-          shift += VLQ_BASE_SHIFT;
-        } while (continuation);
-        return {
-          value: fromVLQSigned(result),
-          rest: aStr.slice(i)
-        };
-      };
-    });
-  },
   './node_modules/source-map/lib/source-map/util.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
       var define = require('./node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
@@ -11567,6 +11510,61 @@
       }
       ;
       exports.compareByGeneratedPositions = compareByGeneratedPositions;
+    });
+  },
+  './node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('./node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      var base64 = require('./node_modules/source-map/lib/source-map/base64.js');
+      var VLQ_BASE_SHIFT = 5;
+      var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
+      var VLQ_BASE_MASK = VLQ_BASE - 1;
+      var VLQ_CONTINUATION_BIT = VLQ_BASE;
+      function toVLQSigned(aValue) {
+        return aValue < 0 ? (-aValue << 1) + 1 : (aValue << 1) + 0;
+      }
+      function fromVLQSigned(aValue) {
+        var isNegative = (aValue & 1) === 1;
+        var shifted = aValue >> 1;
+        return isNegative ? -shifted : shifted;
+      }
+      exports.encode = function base64VLQ_encode(aValue) {
+        var encoded = '';
+        var digit;
+        var vlq = toVLQSigned(aValue);
+        do {
+          digit = vlq & VLQ_BASE_MASK;
+          vlq >>>= VLQ_BASE_SHIFT;
+          if (vlq > 0) {
+            digit |= VLQ_CONTINUATION_BIT;
+          }
+          encoded += base64.encode(digit);
+        } while (vlq > 0);
+        return encoded;
+      };
+      exports.decode = function base64VLQ_decode(aStr) {
+        var i = 0;
+        var strLen = aStr.length;
+        var result = 0;
+        var shift = 0;
+        var continuation, digit;
+        do {
+          if (i >= strLen) {
+            throw new Error('Expected more digits in base 64 VLQ value.');
+          }
+          digit = base64.decode(aStr.charAt(i++));
+          continuation = !!(digit & VLQ_CONTINUATION_BIT);
+          digit &= VLQ_BASE_MASK;
+          result = result + (digit << shift);
+          shift += VLQ_BASE_SHIFT;
+        } while (continuation);
+        return {
+          value: fromVLQSigned(result),
+          rest: aStr.slice(i)
+        };
+      };
     });
   },
   './node_modules/source-map/lib/source-map/array-set.js': function (require, module, exports, global) {
@@ -11926,12 +11924,6 @@
     }
     module.exports = amdefine;
   },
-  './node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
-    function hasOwn(obj, prop) {
-      return Object.prototype.hasOwnProperty.call(obj, prop);
-    }
-    module.exports = hasOwn;
-  },
   './node_modules/mout/object/forIn.js': function (require, module, exports, global) {
     var hasOwn = require('./node_modules/mout/object/hasOwn.js');
     var _hasDontEnumBug, _dontEnums;
@@ -11974,6 +11966,12 @@
       return fn.call(thisObj, obj[key], key, obj);
     }
     module.exports = forIn;
+  },
+  './node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
+    function hasOwn(obj, prop) {
+      return Object.prototype.hasOwnProperty.call(obj, prop);
+    }
+    module.exports = hasOwn;
   },
   './node_modules/quickstart/node_modules/path-browserify/index.js': function (require, module, exports, global) {
     var process = require('./node_modules/quickstart/browser/process.js');
