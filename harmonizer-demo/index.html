@@ -83,10 +83,12 @@
 
     td.tl {
       border-bottom: 1px solid #f9f9f9;
+      width: 55%;
       /*border-right: 1px solid #f9f9f9;*/
     }
 
     td.bl {
+      width: 55%;
       /*border-right: 1px solid #f9f9f9;*/
     }
 
@@ -111,7 +113,85 @@
         <td><h2>es6 ast (esprima#harmony)</h2></td>
       </tr>
       <tr>
-        <td class="tl"><div class="editor" id="es6-code"></div></td>
+        <td class="tl"><div class="editor" id="es6-code">// Harmonizer - Demo.
+// By Valerio Proietti <kamicane@gmail.com>
+// github.com/kamicane/harmonizer
+// github.com/kamicane/nodes
+
+// Edit this document to see a live es6 transpile.
+// Edit the AST Boxes (for debugging purposes)
+// Click the header in the es5 output box to run the code
+// Changed are saved between sessions
+// Empty this document and reload to get the default demo
+
+// # Classes
+
+// class Person {
+//   constructor(name) {
+//     this.name = name;
+//   }
+//   toString() {
+//     return this.name;
+//   }
+// }
+
+// class John extends Person {
+//   constructor() {
+//     super("John");
+//   }
+//   toString() {
+//     super();
+//   }
+// }
+
+// console.log(new John);
+
+// # Spread
+
+// var array = [4,5,6];
+// console.log(1,2,3,...array);
+
+// # Arrow Functions
+
+// var identity = (x) => x;
+
+// var scoped = (x) => {
+//   console.log(this);
+//   var inner = () => {
+//     console.log(this);
+//   }
+// };
+
+// # Default Parameters
+
+// var fnDefaults = function(x = 0, y = 1) {
+//   console.log(x, y);
+// };
+
+// # Rest Parameters
+
+// var fnRest = function(...rest) {
+//   console.log(...rest);
+// };
+
+// # for-of
+
+// for (var value of [1,2,3]) console.log(value);
+
+// # Comprehensions (with spread because it's cool)
+
+// console.log(...[for (v of [0,1,2,3]) if (v) v]);
+
+// # Destructuring assignment
+
+// var [a,[b], {c}] = [1,[2],{c: 3}];
+// console.log(a, b, c);
+
+// function destruct([a,b,c]) {
+//   console.log(a,b,c);
+// }
+
+// destruct([1,2,3]);</div></td>
         <td class="tr"><div class="editor" id="es6-ast"></td>
       </tr>
       <tr class="head">
