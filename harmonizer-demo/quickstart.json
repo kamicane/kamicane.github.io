@@ -1,0 +1,5 @@
+{
+  "plugins": [],
+  "sourceMap": "./harmonizer-demo-compiled.map",
+  "output": "./harmonizer-demo-compiled.js"
+}

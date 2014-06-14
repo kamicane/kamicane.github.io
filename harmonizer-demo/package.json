@@ -1,0 +1,15 @@
+{
+  "name": "harmonizer-demo",
+  "version": "0.0.1",
+  "description": "harmonizer demo",
+  "main": "./index.js",
+  "dependencies": {
+    "elements": "^0.4.3",
+    "mout": "^0.9.1",
+    "prime": "^0.4.2",
+    "harmonizer": "kamicane/harmonizer#master"
+  },
+  "devDependencies": {},
+  "author": "Valerio Proietti",
+  "license": "MIT"
+}
