@@ -7,10 +7,32 @@ var ready = require('elements/domready');
 
 var harmonize = require('harmonizer');
 var library = require('harmonizer/library');
-var Symbol = global.Symbol = library.Symbol;
+global.Symbol = library.Symbol;
 
 var esprima = require('esprima');
 var escodegen = require('escodegen');
+
+var tosource = require('tosource');
+
+var generate = function(object) {
+
+  return escodegen.generate(object, {
+    format: {
+      indent: { style: '  ' },
+      quotes: 'single'
+    }
+  });
+};
+
+var destruct = function(string) {
+  return new Function('return ' + string)();
+};
+
+var inspect = function(object) {
+  var inspected = tosource(object);
+  var parsed = esprima.parse('(' + inspected + ')');
+  return generate(parsed);
+};
 
 var createEditor = function(node, mode, hideLine, readOnly) {
   var editor = ace.edit(node.id());
@@ -31,7 +53,7 @@ var createEditor = function(node, mode, hideLine, readOnly) {
   editorSession.setUseWorker(false);
 
   var throttled = throttle.timeout(function() {
-    editorSession._emit('actual-change');
+    editorSession._emit('throttled-change');
   });
 
   editorSession.on('change', throttled);
@@ -46,106 +68,103 @@ ready(function() {
   var es6AstNode = $('#es6-ast');
   var es5AstNode = $('#es5-ast');
 
-  var nodes = $([es6CodeNode, es5CodeNode, es6AstNode, es5AstNode]);
-
   var es6CodeEditor = createEditor(es6CodeNode, 'javascript');
   var es6CodeSession = es6CodeEditor.getSession();
 
   var es5CodeEditor = createEditor(es5CodeNode, 'javascript', true);
   var es5CodeSession = es5CodeEditor.getSession();
 
-  var es6AstEditor = createEditor(es6AstNode, 'json', true);
+  var es6AstEditor = createEditor(es6AstNode, 'javascript', true);
   var es6AstSession = es6AstEditor.getSession();
 
-  var es5AstEditor = createEditor(es5AstNode, 'json', true);
+  var es5AstEditor = createEditor(es5AstNode, 'javascript', true);
   var es5AstSession = es5AstEditor.getSession();
 
-  var es6AstValue, es5AstValue, es5CodeValue;
+  var es6AstString, es5AstString, es6CodeString, es5CodeString;
 
-  var changing = false;
+  var es6AstObject, es5AstObject;
 
-  es6CodeSession.on('actual-change', function(e) {
-    var code = es6CodeEditor.getValue();
-    localStorage.setItem('code', code);
+  var es6CodeChange = false;
+  var es6AstChange = false;
+
+  es6CodeSession.on('throttled-change', function() {
+    es6CodeChange = true;
+
+    var es6CodeString = es6CodeEditor.getValue();
+    localStorage.setItem('code', es6CodeString);
 
     try {
-      es6AstValue = esprima.parse(code);
-      es6AstEditor.setValue(JSON.stringify(es6AstValue, null, 2), -1);
-      es6AstValue = null;
+      es6AstObject = esprima.parse(es6CodeString);
+      es6AstEditor.setValue(inspect(es6AstObject), -1);
     } catch(e) { // parse failed
-      es6AstValue = false;
-      es6AstEditor.setValue(e.message, -1);
+      es6AstObject = false;
+      es6AstEditor.setValue(inspect(e), -1);
     }
 
   });
 
-  es6AstSession.on('actual-change', function(e) {
+  es6AstSession.on('throttled-change', function() {
+    es6AstChange = true;
 
-    if (es6AstValue === false) {
-      es5AstValue = false;
+    if (es6AstObject === false) {
+      es5AstObject = false;
       es5AstEditor.setValue(null, -1);
 
     } else {
-      var parsed = es6AstValue;
-
-      if (!parsed) try {
-        parsed = JSON.parse(es6AstEditor.getValue())
+      if (!es6CodeChange) try { // changed directly
+        // console.log('es6 ast was edited manually. evaluating.');
+        es6AstObject = destruct(es6AstEditor.getValue());
       } catch(e) {
-        es5AstValue = false;
-        es5AstEditor.setValue(null, -1);
+        es5AstObject = false;
+        es5AstEditor.setValue(inspect(e), -1);
         return;
       }
 
       try {
-        es5AstValue = harmonize(parsed);
-        es5AstEditor.setValue(JSON.stringify(es5AstValue, null, 2), -1);
-        es5AstValue = null;
+        es5AstObject = harmonize(es6AstObject);
+        es5AstEditor.setValue(inspect(es5AstObject.toJSON()), -1);
       } catch (e) { // ast harmonization failed
-        es5AstValue = false;
-        es5AstEditor.setValue(e.message, -1);
+        es5AstObject = false;
+        es5AstEditor.setValue(inspect(e), -1);
       }
     }
+
+    es6CodeChange = false;
   });
 
-  es5AstSession.on('actual-change', function(e) {
-    if (es5AstValue === false) {
-      es5CodeValue = false;
+  es5AstSession.on('throttled-change', function() {
+    if (es5AstObject === false) {
+      es5CodeString = false;
       es5CodeEditor.setValue(null, -1);
 
     } else {
-      var parsed = es5AstValue;
 
-      if (!parsed) try {
-        parsed = JSON.parse(es5AstEditor.getValue());
+      if (!es6AstChange) try { // changed directly
+        // console.log('es5 ast was edited manually. evaluating.');
+        es5AstObject = destruct(es5AstEditor.getValue());
       } catch(e) {
-        es5CodeValue = false;
-        es5CodeEditor.setValue(null, -1);
+        es5CodeString = false;
+        es5CodeEditor.setValue(inspect(e), -1);
         return;
       }
 
       try {
-        es5CodeValue = escodegen.generate(parsed, {
-          format: {
-            indent: { style: '  ' },
-            quotes: 'single'
-          }
-        });
-
-        es5CodeEditor.setValue(es5CodeValue, -1);
-        es5CodeValue = null;
+        es5CodeString = generate(es5AstObject);
+        es5CodeEditor.setValue(es5CodeString, -1);
       } catch(e) { // generation failed
-        es5CodeValue = false;
-        es5CodeEditor.setValue(e.message, -1);
+        es5CodeString = false;
+        es5CodeEditor.setValue(inspect(e), -1);
       }
     }
 
+    es6AstChange = false;
   });
 
   $('#run').on('click', function() {
     eval(es5CodeEditor.getValue());
   });
 
-  var code = localStorage.getItem('code');
-  if (code) es6CodeEditor.setValue(code, -1);
+  var localCode = localStorage.getItem('code');
+  if (localCode) es6CodeEditor.setValue(localCode, -1);
 
 });

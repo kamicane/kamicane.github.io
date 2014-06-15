@@ -5,9 +5,10 @@
   "main": "./index.js",
   "dependencies": {
     "elements": "^0.4.3",
+    "harmonizer": "kamicane/harmonizer#master",
     "mout": "^0.9.1",
     "prime": "^0.4.2",
-    "harmonizer": "kamicane/harmonizer#master"
+    "tosource": "^0.1.2"
   },
   "devDependencies": {},
   "author": "Valerio Proietti",
