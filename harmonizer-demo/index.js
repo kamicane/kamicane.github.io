@@ -98,7 +98,7 @@ ready(function() {
       es6AstEditor.setValue(inspect(es6AstObject), -1);
     } catch(e) { // parse failed
       es6AstObject = false;
-      es6AstEditor.setValue(inspect(e), -1);
+      es6AstEditor.setValue(e.message, -1);
     }
 
   });
@@ -116,7 +116,7 @@ ready(function() {
         es6AstObject = destruct(es6AstEditor.getValue());
       } catch(e) {
         es5AstObject = false;
-        es5AstEditor.setValue(inspect(e), -1);
+        es5AstEditor.setValue(e.message, -1);
         return;
       }
 
@@ -125,7 +125,7 @@ ready(function() {
         es5AstEditor.setValue(inspect(es5AstObject.toJSON()), -1);
       } catch (e) { // ast harmonization failed
         es5AstObject = false;
-        es5AstEditor.setValue(inspect(e), -1);
+        es5AstEditor.setValue(e.message, -1);
       }
     }
 
@@ -144,7 +144,7 @@ ready(function() {
         es5AstObject = destruct(es5AstEditor.getValue());
       } catch(e) {
         es5CodeString = false;
-        es5CodeEditor.setValue(inspect(e), -1);
+        es5CodeEditor.setValue(e.message, -1);
         return;
       }
 
@@ -153,7 +153,7 @@ ready(function() {
         es5CodeEditor.setValue(es5CodeString, -1);
       } catch(e) { // generation failed
         es5CodeString = false;
-        es5CodeEditor.setValue(inspect(e), -1);
+        es5CodeEditor.setValue(e.message, -1);
       }
     }
 
