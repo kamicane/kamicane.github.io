@@ -103,6 +103,8 @@ ready(function() {
 
   });
 
+  var harmonizationError;
+
   es6AstSession.on('throttled-change', function() {
     es6AstChange = true;
 
@@ -124,6 +126,7 @@ ready(function() {
         es5AstObject = harmonize(es6AstObject);
         es5AstEditor.setValue(inspect(es5AstObject.toJSON()), -1);
       } catch (e) { // ast harmonization failed
+        harmonizationError = e;
         es5AstObject = false;
         es5AstEditor.setValue(e.message, -1);
       }
@@ -158,6 +161,12 @@ ready(function() {
     }
 
     es6AstChange = false;
+
+    if (harmonizationError) {
+      var x = harmonizationError;
+      harmonizationError = false;
+      throw x;
+    }
   });
 
   $('#run').on('click', function() {
