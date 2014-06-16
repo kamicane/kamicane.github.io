@@ -98,6 +98,7 @@
           es6AstEditor.setValue(e.message, -1);
         }
       });
+      var harmonizationError;
       es6AstSession.on('throttled-change', function () {
         es6AstChange = true;
         if (es6AstObject === false) {
@@ -116,6 +117,7 @@
             es5AstObject = harmonize(es6AstObject);
             es5AstEditor.setValue(inspect(es5AstObject.toJSON()), -1);
           } catch (e) {
+            harmonizationError = e;
             es5AstObject = false;
             es5AstEditor.setValue(e.message, -1);
           }
@@ -144,6 +146,11 @@
           }
         }
         es6AstChange = false;
+        if (harmonizationError) {
+          var x = harmonizationError;
+          harmonizationError = false;
+          throw x;
+        }
       });
       $('#run').on('click', function () {
         eval(es5CodeEditor.getValue());
@@ -194,108 +201,6 @@
       }, context);
     };
     module.exports = throttle;
-  },
-  '../../../node_modules/elements/domready.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('../../../node_modules/elements/events.js');
-    var readystatechange = 'onreadystatechange' in document, shouldPoll = false, loaded = false, readys = [], checks = [], ready = null, timer = null, test = document.createElement('div'), doc = $(document), win = $(window);
-    var domready = function () {
-      if (timer)
-        timer = clearTimeout(timer);
-      if (!loaded) {
-        if (readystatechange)
-          doc.off('readystatechange', check);
-        doc.off('DOMContentLoaded', domready);
-        win.off('load', domready);
-        loaded = true;
-        for (var i = 0; ready = readys[i++];)
-          ready();
-      }
-      return loaded;
-    };
-    var check = function () {
-      for (var i = checks.length; i--;)
-        if (checks[i]())
-          return domready();
-      return false;
-    };
-    var poll = function () {
-      clearTimeout(timer);
-      if (!check())
-        timer = setTimeout(poll, 1000 / 60);
-    };
-    if (document.readyState) {
-      var complete = function () {
-        return !!/loaded|complete/.test(document.readyState);
-      };
-      checks.push(complete);
-      if (!complete()) {
-        if (readystatechange)
-          doc.on('readystatechange', check);
-        else
-          shouldPoll = true;
-      } else {
-        domready();
-      }
-    }
-    if (test.doScroll) {
-      var scrolls = function () {
-        try {
-          test.doScroll();
-          return true;
-        } catch (e) {
-        }
-        return false;
-      };
-      if (!scrolls()) {
-        checks.push(scrolls);
-        shouldPoll = true;
-      }
-    }
-    if (shouldPoll)
-      poll();
-    doc.on('DOMContentLoaded', domready);
-    win.on('load', domready);
-    module.exports = function (ready) {
-      loaded ? ready() : readys.push(ready);
-      return null;
-    };
-  },
-  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('../../../node_modules/elements/base.js');
-    require('../../../node_modules/elements/attributes.js');
-    require('../../../node_modules/elements/events.js');
-    require('../../../node_modules/elements/insertion.js');
-    require('../../../node_modules/elements/traversal.js');
-    require('../../../node_modules/elements/delegation.js');
-    module.exports = $;
-  },
-  '../../../node_modules/harmonizer/library.js': function (require, module, exports, global) {
-    'use strict';
-    var Symbol = global.Symbol || { iterator: '@@iterator' };
-    if (!(Symbol.iterator in Array.prototype))
-      Object.defineProperty(Array.prototype, Symbol.iterator, {
-        writable: true,
-        configurable: true,
-        value: function () {
-          var array = this, i = 0;
-          return {
-            next: function () {
-              if (i === array.length)
-                return {
-                  value: void 0,
-                  done: true
-                };
-              return {
-                value: array[i++],
-                done: false
-              };
-            }
-          };
-        }
-      });
-    exports.Symbol = Symbol;
   },
   '../../../node_modules/esprima/esprima.js': function (require, module, exports, global) {
     (function (root, factory) {
@@ -4390,670 +4295,6 @@
       }();
     }));
   },
-  '../../../node_modules/harmonizer/index.js': function (require, module, exports, global) {
-    'use strict';
-    var esprima = require('../../../node_modules/esprima/esprima.js');
-    var build = require('../../../node_modules/nodes/index.js');
-    var syntax = require('../../../node_modules/nodes/syntax.json');
-    var nodes = build.nodes;
-    var List = build.lists.List;
-    var capitalize = function (string) {
-      return string.replace(/(?:^|\s)\S/g, function (a) {
-        return a.toUpperCase();
-      });
-    };
-    var lowerFirst = function (string) {
-      return string.replace(/^[A-Z]/, function (a) {
-        return a.toLowerCase();
-      });
-    };
-    var listIndex = function (node) {
-      var lastNode = node, firstList;
-      while (node = node.parentNode) {
-        if (node instanceof List) {
-          firstList = node;
-          break;
-        } else {
-          lastNode = node;
-        }
-      }
-      if (!firstList)
-        throw new Error('parent list not found');
-      return {
-        list: firstList,
-        index: firstList.indexOf(lastNode)
-      };
-    };
-    var insertBefore = function (node, node2) {
-      var li = listIndex(node);
-      li.list.splice(li.index, 0, node2);
-    };
-    var insertAfter = function (node, node2) {
-      var li = listIndex(node);
-      li.list.splice(li.index + 1, 0, node2);
-    };
-    var express = function (string) {
-      return build(esprima.parse(string).body[0]);
-    };
-    var getUniqueName = function (node, name) {
-      var names = node.search('#Identifier:declaration > name, #Identifier:reference > name');
-      while (~names.indexOf(name))
-        name = '_' + name;
-      return name;
-    };
-    var getUniqueId = function (node, name) {
-      name = getUniqueName(node, name);
-      return new nodes.Identifier({ name: name });
-    };
-    var getSelfId = function (node) {
-      if (!node.selfId) {
-        var selfName = getUniqueName(node, 'self');
-        var declaration = express('var ' + selfName + ' = this');
-        var id = declaration.declarations[0].id;
-        var body = nodes.Function.test(node) ? node.body.body : node.body;
-        body.unshift(declaration);
-        node.selfId = id;
-      }
-      return node.selfId.clone();
-    };
-    var spread = function () {
-      var array = [], last = arguments.length - 1;
-      for (var i = 0; i < last; i++)
-        array.push(arguments[i]);
-      var iterator = arguments[last][Symbol.iterator](), step;
-      while (!(step = iterator.next()).done)
-        array.push(step.value);
-      return array;
-    };
-    var extend = function (SuperClass, Class, prototype) {
-      var descriptors = { constructor: { value: Class } };
-      for (var key in prototype)
-        descriptors[key] = Object.getOwnPropertyDescriptor(prototype, key);
-      Class.prototype = Object.create(SuperClass.prototype, descriptors);
-    };
-    var getSuperDescriptor = function (prototype, name) {
-      var descriptor;
-      while (prototype = Object.getPrototypeOf(prototype)) {
-        if (descriptor = Object.getOwnPropertyDescriptor(prototype, name))
-          return descriptor;
-      }
-    };
-    var getExtendId = function (node) {
-      if (!node.extendId) {
-        var extendName = getUniqueName(node, 'extend');
-        var declaration = express('var ' + extendName + ' = ' + extend.toString());
-        var id = declaration.declarations[0].id;
-        var body = nodes.Function.test(node) ? node.body.body : node.body;
-        body.unshift(declaration);
-        node.extendId = id;
-      }
-      return node.extendId.clone();
-    };
-    var getSpreadId = function (node) {
-      if (!node.spreadId) {
-        var spreadName = getUniqueName(node, 'spread');
-        var declaration = express('var ' + spreadName + ' = ' + spread.toString());
-        var id = declaration.declarations[0].id;
-        var body = nodes.Function.test(node) ? node.body.body : node.body;
-        body.unshift(declaration);
-        node.spreadId = id;
-      }
-      return node.spreadId.clone();
-    };
-    var getSliceId = function (node) {
-      if (!node.sliceId) {
-        var sliceName = getUniqueName(node, 'slice');
-        var declaration = express('var ' + sliceName + ' = Array.prototype.slice');
-        var id = declaration.declarations[0].id;
-        var body = nodes.Function.test(node) ? node.body.body : node.body;
-        body.unshift(declaration);
-        node.sliceId = id;
-      }
-      return node.sliceId.clone();
-    };
-    var createDeclarator = function (id, init) {
-      return new nodes.VariableDeclarator({
-        id: id,
-        init: init
-      });
-    };
-    var createAssignment = function (left, right) {
-      return new nodes.AssignmentExpression({
-        operator: '=',
-        left: left,
-        right: right
-      });
-    };
-    var destruct = {
-        ArrayPattern: function (pattern, declarations, valueId, assign) {
-          var create = assign ? createAssignment : createDeclarator;
-          pattern.elements.forEachRight(function (element, i) {
-            if (element == null)
-              return;
-            var memberString = valueId ? valueId.name + '[' + i + ']' : null;
-            if (element.type === syntax.Identifier) {
-              declarations.unshift(create(element, memberString ? express(memberString).expression : null));
-            } else if (element.search('properties > * > value#Identifier, elements > #Identifier').length) {
-              var nestedId;
-              if (valueId) {
-                nestedId = getUniqueId(declarations.scope(), valueId.name + i);
-                var declaration = express('var ' + nestedId.name + ' = ' + memberString);
-                insertBefore(declarations, declaration);
-              }
-              destruct[element.type](element, declarations, nestedId, assign);
-            }
-          });
-        },
-        ObjectPattern: function (pattern, declarations, valueId, assign) {
-          var create = assign ? createAssignment : createDeclarator;
-          pattern.properties.forEachRight(function (property) {
-            var memberString = valueId ? valueId.name + '.' + property.key.name : null;
-            var value = property.value;
-            if (value.type === syntax.Identifier) {
-              declarations.unshift(create(value, memberString ? express(memberString).expression : null));
-            } else if (value.search('properties > * > value#Identifier, elements > #Identifier').length) {
-              var nestedId;
-              if (valueId) {
-                nestedId = getUniqueId(declarations.scope(), valueId.name + capitalize(property.key.name));
-                var declaration = express('var ' + nestedId.name + ' = ' + memberString);
-                insertBefore(declarations, declaration);
-              }
-              destruct[value.type](value, declarations, nestedId, assign);
-            }
-          });
-        }
-      };
-    function patternify(program) {
-      var q;
-      q = [
-        '#ForOfStatement > left > declarations > * > #ArrayPattern',
-        '#ForOfStatement > left > declarations > * > #ObjectPattern',
-        '#ForInStatement > left > declarations > * > #ArrayPattern',
-        '#ForInStatement > left > declarations > * > #ObjectPattern'
-      ];
-      program.search(q).forEachRight(function (pattern) {
-        var declarator = pattern.parentNode;
-        var declarations = declarator.parentNode;
-        var declaration = declarations.parentNode;
-        var forStatement = declaration.parentNode;
-        var valueId = getUniqueId(forStatement.scope(), lowerFirst(pattern.type));
-        declarations.replaceChild(declarator, new nodes.VariableDeclarator({
-          id: valueId,
-          kind: declaration.kind
-        }));
-        var newDeclaration = new nodes.VariableDeclaration();
-        forStatement.body.body.unshift(newDeclaration);
-        destruct[pattern.type](pattern, newDeclaration.declarations, valueId);
-      });
-      q = [
-        '#ForOfStatement > left#ArrayPattern',
-        '#ForOfStatement > left#ObjectPattern',
-        '#ForInStatement > left#ArrayPattern',
-        '#ForInStatement > left#ObjectPattern'
-      ];
-      program.search(q).forEachRight(function (pattern) {
-        var forStatement = pattern.parentNode;
-        var valueId = getUniqueId(forStatement.scope(), lowerFirst(pattern.type));
-        forStatement.left = express('var ' + valueId.name);
-        var expression = new nodes.ExpressionStatement();
-        var sequence = new nodes.SequenceExpression();
-        expression.expression = sequence;
-        forStatement.body.body.unshift(expression);
-        destruct[pattern.type](pattern, sequence.expressions, valueId, true);
-      });
-      q = '#VariableDeclarator > #ArrayPattern, #VariableDeclarator > #ObjectPattern';
-      program.search(q).forEachRight(function (pattern) {
-        var declarator = pattern.parentNode;
-        var declarations = declarator.parentNode;
-        var declaration = declarations.parentNode;
-        declarations.removeChild(declarator);
-        if (!pattern.search('properties > * > value#Identifier, elements > #Identifier').length) {
-          if (!declarations.length) {
-            declaration.parentNode.removeChild(declaration);
-          }
-          return;
-        }
-        if (declarator.init == null) {
-          destruct[pattern.type](pattern, declarations);
-        } else {
-          var valueId;
-          if (declarator.init.type === syntax.Identifier) {
-            valueId = declarator.init;
-          } else {
-            valueId = getUniqueId(declarations.scope(), lowerFirst(pattern.type));
-            var valueDeclaration = express('var ' + valueId.name + ' = $');
-            valueDeclaration.declarations[0].init = declarator.init;
-            insertBefore(declarations, valueDeclaration);
-          }
-          destruct[pattern.type](pattern, declarations, valueId);
-        }
-      });
-      q = '#AssignmentExpression > left#ArrayPattern, #AssignmentExpression > left#ObjectPattern';
-      program.search(q).forEachRight(function (pattern) {
-        var expression = pattern.parentNode;
-        var right = expression.right;
-        var expressions = expression.parentNode;
-        var sequence = expressions.parentNode;
-        if (sequence.type !== syntax.SequenceExpression) {
-          var key = expressions.indexOf(expression);
-          expressions[key] = new nodes.SequenceExpression({ expressions: [expressions[key]] });
-          expressions = expressions[key].expressions;
-        }
-        expressions.removeChild(expression);
-        sequence = expressions.parentNode;
-        var valueId;
-        if (right.type === syntax.Identifier) {
-          valueId = right;
-        } else {
-          valueId = getUniqueId(sequence.scope(), lowerFirst(pattern.type));
-          var declaration = express('var ' + valueId.name + ' = $');
-          declaration.declarations[0].init = right;
-          insertBefore(sequence, declaration);
-        }
-        destruct[pattern.type](pattern, expressions, valueId, true);
-      });
-      q = '#Function > params > #ArrayPattern, #Function > params > #ObjectPattern';
-      program.search(q).forEachRight(function (pattern) {
-        var params = pattern.parentNode;
-        var fn = params.parentNode;
-        var valueId = getUniqueId(fn, lowerFirst(pattern.type));
-        params.replaceChild(pattern, valueId);
-        if (!pattern.search('properties > * > value#Identifier, elements > #Identifier').length)
-          return;
-        var declaration = new nodes.VariableDeclaration();
-        fn.body.body.unshift(declaration);
-        destruct[pattern.type](pattern, declaration.declarations, valueId);
-      });
-    }
-    function defaultify(program) {
-      program.search('#Function').forEach(function (fn) {
-        if (fn.defaults.length === 0)
-          return;
-        var params = fn.params;
-        var defaults = fn.defaults;
-        defaults.forEachRight(function (node, i) {
-          if (node == null)
-            return defaults.removeChild(node);
-          var param = params[i];
-          var statement = express('if (' + param.name + ' === void 0) ' + param.name + ' = $');
-          statement.consequent.expression.right = node;
-          fn.body.body.unshift(statement);
-        });
-      });
-    }
-    function deshorthandify(program) {
-      program.search('#Property').forEach(function (node) {
-        node.shorthand = false;
-        node.method = false;
-      });
-    }
-    function restify(program) {
-      program.search('#Function[rest!=null]').forEach(function (node) {
-        var block = node.body.body;
-        var length = node.params.length;
-        var sliceId = getSliceId(program);
-        var declaration = express('var ' + node.rest.name + ' = ' + sliceId.name + '.call(arguments' + (length === 0 ? '' : ', ' + length) + ')');
-        node.rest = null;
-        block.unshift(declaration);
-      });
-    }
-    function arrowify(program) {
-      program.search('#ArrowFunctionExpression #ThisExpression').forEach(function (thisExpression) {
-        var arrowFunction, selfScope = thisExpression;
-        while (selfScope = selfScope.scope()) {
-          if (selfScope.type === syntax.ArrowFunctionExpression)
-            arrowFunction = selfScope;
-          else
-            break;
-        }
-        if (!arrowFunction)
-          return;
-        var selfId = getSelfId(arrowFunction.scope());
-        thisExpression.parentNode.replaceChild(thisExpression, selfId.clone());
-      });
-      program.search('#ArrowFunctionExpression').forEach(function (node) {
-        var shallow = new nodes.FunctionExpression(node);
-        node.parentNode.replaceChild(node, shallow);
-      });
-    }
-    function forofify(program) {
-      program.search('#ForOfStatement').forEach(function (node) {
-        var forStatement = new nodes.ForStatement();
-        var left = node.left;
-        var iteratorId = getUniqueId(node.scope(), 'iterator');
-        var stepId = getUniqueId(node.scope(), 'step');
-        forStatement.body = node.body;
-        var init = new nodes.CallExpression({
-            callee: new nodes.MemberExpression({
-              computed: true,
-              object: node.right,
-              property: express('Symbol.iterator').expression
-            })
-          });
-        forStatement.init = new nodes.VariableDeclaration({
-          declarations: [
-            new nodes.VariableDeclarator({
-              id: iteratorId,
-              init: init
-            }),
-            new nodes.VariableDeclarator({ id: stepId })
-          ]
-        });
-        forStatement.test = express('!(' + stepId.name + ' = ' + iteratorId.name + '.next()).done').expression;
-        var expression, xp = express(stepId.name + '.value').expression;
-        if (left.type === syntax.VariableDeclaration) {
-          left.declarations[0].init = xp;
-          expression = left;
-        } else {
-          expression = new nodes.AssignmentExpression({
-            operator: '=',
-            left: left,
-            right: xp
-          });
-        }
-        forStatement.body.body.unshift(expression);
-        node.parentNode.replaceChild(node, forStatement);
-      });
-    }
-    var applyContext = function (node, context) {
-      var args = node.arguments;
-      var spread = args[args.length - 1];
-      var propertyName;
-      if (spread && spread.type === syntax.SpreadElement) {
-        args.replaceChild(spread, spread.argument);
-        var spreadId = getSpreadId(node.root);
-        var spreadCall = express(spreadId.name + '()').expression;
-        spreadCall.arguments.push.apply(spreadCall.arguments, args);
-        args.push(spreadCall);
-        propertyName = 'apply';
-      } else {
-        propertyName = 'call';
-      }
-      var callee = node.callee;
-      var object = callee.object;
-      if (!context) {
-        if (callee.type !== syntax.MemberExpression) {
-          args.unshift(new nodes.Literal({ value: null }));
-        } else {
-          if (object.type !== syntax.Identifier) {
-            var contextId = getUniqueId(node.scope(), lowerFirst(object.type));
-            var declaration = express('var ' + contextId.name + ' = $');
-            var declarator = declaration.declarations[0];
-            declarator.init = object;
-            insertBefore(node, declaration);
-            object = callee.object = contextId;
-          }
-          args.unshift(object.clone());
-        }
-      } else {
-        args.unshift(context);
-      }
-      node.callee = new nodes.MemberExpression({
-        object: node.callee,
-        property: new nodes.Identifier({ name: propertyName })
-      });
-    };
-    function spreadify(program) {
-      program.search('#SpreadElement < arguments < #CallExpression').forEach(function (node) {
-        applyContext(node);
-      });
-      program.search('#SpreadElement < elements < #ArrayExpression').forEach(function (node) {
-        var elements = node.elements;
-        var spread = elements[elements.length - 1];
-        elements.replaceChild(spread, spread.argument);
-        var spreadId = getSpreadId(program);
-        var spreadCall = express(spreadId.name + '()').expression;
-        spreadCall.arguments.push.apply(spreadCall.arguments, elements);
-        node.parentNode.replaceChild(node, spreadCall);
-      });
-    }
-    function comprehendify(program) {
-      program.search('#ComprehensionExpression').forEach(function (node) {
-        var parentNode = node.parentNode;
-        var blocks = node.blocks;
-        var wrapper = express('(function(){})()').expression;
-        var body = wrapper.callee.body.body;
-        var comprehensionId = new nodes.Identifier({ name: '$' });
-        var identifiers = [comprehensionId];
-        var comprehensionDeclaration = new nodes.VariableDeclaration({
-            declarations: [new nodes.VariableDeclarator({
-                id: comprehensionId,
-                init: new nodes.ArrayExpression()
-              })]
-          });
-        var forOfRoot, forOfInnermost;
-        blocks.forEach(function (block) {
-          var forOfStatement = new nodes.ForOfStatement();
-          forOfStatement.left = new nodes.VariableDeclaration({ declarations: [new nodes.VariableDeclarator({ id: block.left })] });
-          forOfStatement.right = block.right;
-          forOfStatement.body = new nodes.BlockStatement();
-          if (forOfInnermost)
-            forOfInnermost.body.body.push(forOfStatement);
-          else
-            forOfRoot = forOfStatement;
-          forOfInnermost = forOfStatement;
-        });
-        var pushCallExpression = express(comprehensionId.name + '.push()');
-        pushCallExpression.expression.arguments.push(node.body);
-        identifiers.push(pushCallExpression.expression.callee.object);
-        if (node.filter) {
-          var ifStatement = new nodes.IfStatement({
-              test: node.filter,
-              consequent: pushCallExpression
-            });
-          forOfInnermost.body.body.push(ifStatement);
-        } else {
-          forOfInnermost.body.body.push(pushCallExpression);
-        }
-        var returnStatement = new nodes.ReturnStatement({ argument: comprehensionId.clone() });
-        identifiers.push(returnStatement.argument);
-        body.push(comprehensionDeclaration, forOfRoot, returnStatement);
-        parentNode.replaceChild(node, wrapper);
-        var comprehensionName = getUniqueName(wrapper.callee, 'comprehension');
-        identifiers.forEach(function (id) {
-          id.name = comprehensionName;
-        });
-      });
-    }
-    function classify(program) {
-      program.search('#Class').forEach(function (node) {
-        var definitions = node.body.body;
-        var scope = node.scope();
-        var extendId, superClass = node.superClass;
-        if (superClass)
-          extendId = getExtendId(program);
-        var superClassDeclaration;
-        if (superClass && superClass.type !== syntax.Identifier) {
-          var superClassId = getUniqueId(scope, 'Super' + capitalize(node.id.name));
-          superClassDeclaration = new nodes.VariableDeclaration({
-            declarations: [new nodes.VariableDeclarator({
-                id: superClassId,
-                init: superClass
-              })]
-          });
-          superClass = node.superClass = superClassId.clone();
-        }
-        definitions.search('#CallExpression > callee#Identifier[name=super]').forEach(function (id) {
-          var call = id.parentNode;
-          if (call.parent('#Class') !== node)
-            return;
-          var definition = call.parent('#MethodDefinition');
-          var methodId = definition.key;
-          var definitionFunction = definition.value;
-          var superCallExpression;
-          if (methodId.name === 'constructor') {
-            superCallExpression = superClass.clone();
-          } else {
-            superCallExpression = express(superClass.name + '.prototype.' + methodId.name).expression;
-          }
-          var scope = id.scope();
-          var selfId;
-          if (scope !== definitionFunction)
-            selfId = getSelfId(definitionFunction);
-          else
-            selfId = new nodes.ThisExpression();
-          call.callee = superCallExpression;
-          applyContext(call, selfId);
-        });
-        var constructorFunction = definitions.search('> #MethodDefinition > key[name=constructor] < * > value')[0];
-        if (constructorFunction) {
-          constructorFunction.id = node.id;
-          definitions.removeChild(constructorFunction.parentNode);
-          constructorFunction = new nodes.FunctionDeclaration(constructorFunction);
-        } else {
-          constructorFunction = express('function ' + node.id.name + '() {' + (superClass ? 'return ' + superClass.name + '.apply(this, arguments)' : '') + '}');
-        }
-        var wrapper;
-        if (node.type === syntax.ClassExpression) {
-          wrapper = express('(function(){})()').expression;
-          var body = wrapper.callee.body.body;
-          var returnStatement = new nodes.ReturnStatement({ argument: constructorFunction.id.clone() });
-          body.push(constructorFunction);
-          body.push(returnStatement);
-        } else {
-          wrapper = constructorFunction;
-        }
-        node.parentNode.replaceChild(node, wrapper);
-        var prototype = new nodes.ObjectExpression();
-        definitions.forEach(function (definition) {
-          prototype.properties.push(new nodes.Property({
-            key: definition.key,
-            value: definition.value,
-            kind: definition.kind || 'init'
-          }));
-        });
-        var prototypeExpression;
-        if (!superClass && prototype.properties.length) {
-          prototypeExpression = express('(' + constructorFunction.id.name + '.prototype = $)');
-          prototypeExpression.expression.right = prototype;
-        } else if (superClass) {
-          prototypeExpression = express(extendId.name + '()');
-          prototypeExpression.expression.arguments.push(superClass, constructorFunction.id.clone(), prototype);
-        }
-        if (superClassDeclaration)
-          insertBefore(constructorFunction, superClassDeclaration);
-        if (prototypeExpression)
-          insertAfter(constructorFunction, prototypeExpression);
-      });
-    }
-    function templateify(program) {
-      program.search('#TemplateLiteral').forEach(function (node) {
-        var parts = [];
-        var stringFound;
-        node.quasis.forEach(function (quasi, i) {
-          var cooked = quasi.value.cooked;
-          if (cooked) {
-            stringFound = true;
-            parts.push(new nodes.Literal({ value: quasi.value.cooked }));
-          }
-          if (i in node.expressions)
-            parts.push(node.expressions[i]);
-        });
-        if (!stringFound)
-          parts.push(new nodes.Literal({ value: '' }));
-        if (parts.length === 1) {
-          node.parentNode.replaceChild(node, parts[0]);
-          return;
-        }
-        var bin = new nodes.BinaryExpression({
-            operator: '+',
-            left: parts.shift(),
-            right: parts.pop()
-          });
-        var binaryExpression = parts.reduceRight(function (bin, part, i) {
-            return bin.left = new nodes.BinaryExpression({
-              operator: '+',
-              left: bin.left,
-              right: part
-            });
-          }, bin);
-        node.parentNode.replaceChild(node, bin);
-      });
-    }
-    function blockify(program) {
-      var statementBodies = [
-          '#IfStatement > alternate',
-          '#IfStatement > consequent',
-          '#ForStatement > body',
-          '#ForInStatement > body',
-          '#ForOfStatement > body',
-          '#WhileStatement > body',
-          '#DoWhileStatement > body',
-          '#LabeledStatement > body'
-        ].map(function (type) {
-          return type + '[type!=BlockStatement]';
-        });
-      program.search(statementBodies).forEach(function (statement) {
-        var parentNode = statement.parentNode;
-        var key = parentNode.indexOf(statement);
-        parentNode[key] = new nodes.BlockStatement({ body: [statement] });
-      });
-      program.search('#ArrowFunctionExpression[expression=true]').forEach(function (node) {
-        node.expression = false;
-        node.body = new nodes.BlockStatement({ body: [new nodes.ReturnStatement({ argument: node.body })] });
-      });
-    }
-    function transform(tree) {
-      var program = build(tree);
-      blockify(program);
-      deshorthandify(program);
-      arrowify(program);
-      restify(program);
-      comprehendify(program);
-      forofify(program);
-      patternify(program);
-      defaultify(program);
-      classify(program);
-      spreadify(program);
-      templateify(program);
-      return program;
-    }
-    module.exports = transform;
-  },
-  '../../../node_modules/tosource/tosource.js': function (require, module, exports, global) {
-    module.exports = function (object, filter, indent, startingIndent) {
-      var seen = [];
-      return walk(object, filter, indent === undefined ? '  ' : indent || '', startingIndent || '', seen);
-      function walk(object, filter, indent, currentIndent, seen) {
-        var nextIndent = currentIndent + indent;
-        object = filter ? filter(object) : object;
-        switch (typeof object) {
-        case 'string':
-          return JSON.stringify(object);
-        case 'boolean':
-        case 'number':
-        case 'function':
-        case 'undefined':
-          return '' + object;
-        }
-        if (object === null)
-          return 'null';
-        if (object instanceof RegExp)
-          return object.toString();
-        if (object instanceof Date)
-          return 'new Date(' + object.getTime() + ')';
-        if (seen.indexOf(object) >= 0)
-          return '{$circularReference:1}';
-        seen.push(object);
-        function join(elements) {
-          return indent.slice(1) + elements.join(',' + (indent && '\n') + nextIndent) + (indent ? ' ' : '');
-        }
-        if (Array.isArray(object)) {
-          return '[' + join(object.map(function (element) {
-            return walk(element, filter, indent, nextIndent, seen.slice());
-          })) + ']';
-        }
-        var keys = Object.keys(object);
-        return keys.length ? '{' + join(keys.map(function (key) {
-          return (legalKey(key) ? key : JSON.stringify(key)) + ':' + walk(object[key], filter, indent, nextIndent, seen.slice());
-        })) + '}' : '{}';
-      }
-    };
-    var KEYWORD_REGEXP = /^(abstract|boolean|break|byte|case|catch|char|class|const|continue|debugger|default|delete|do|double|else|enum|export|extends|false|final|finally|float|for|function|goto|if|implements|import|in|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|super|switch|synchronized|this|throw|throws|transient|true|try|typeof|undefined|var|void|volatile|while|with)$/;
-    function legalKey(string) {
-      return /^[a-z_$][0-9a-z_$]*$/gi.test(string) && !KEYWORD_REGEXP.test(string);
-    }
-  },
   '../../../node_modules/escodegen/escodegen.js': function (require, module, exports, global) {
     (function () {
       'use strict';
@@ -6999,6 +6240,823 @@
       exports.FORMAT_DEFAULTS = FORMAT_DEFAULTS;
     }());
   },
+  '../../../node_modules/elements/domready.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('../../../node_modules/elements/events.js');
+    var readystatechange = 'onreadystatechange' in document, shouldPoll = false, loaded = false, readys = [], checks = [], ready = null, timer = null, test = document.createElement('div'), doc = $(document), win = $(window);
+    var domready = function () {
+      if (timer)
+        timer = clearTimeout(timer);
+      if (!loaded) {
+        if (readystatechange)
+          doc.off('readystatechange', check);
+        doc.off('DOMContentLoaded', domready);
+        win.off('load', domready);
+        loaded = true;
+        for (var i = 0; ready = readys[i++];)
+          ready();
+      }
+      return loaded;
+    };
+    var check = function () {
+      for (var i = checks.length; i--;)
+        if (checks[i]())
+          return domready();
+      return false;
+    };
+    var poll = function () {
+      clearTimeout(timer);
+      if (!check())
+        timer = setTimeout(poll, 1000 / 60);
+    };
+    if (document.readyState) {
+      var complete = function () {
+        return !!/loaded|complete/.test(document.readyState);
+      };
+      checks.push(complete);
+      if (!complete()) {
+        if (readystatechange)
+          doc.on('readystatechange', check);
+        else
+          shouldPoll = true;
+      } else {
+        domready();
+      }
+    }
+    if (test.doScroll) {
+      var scrolls = function () {
+        try {
+          test.doScroll();
+          return true;
+        } catch (e) {
+        }
+        return false;
+      };
+      if (!scrolls()) {
+        checks.push(scrolls);
+        shouldPoll = true;
+      }
+    }
+    if (shouldPoll)
+      poll();
+    doc.on('DOMContentLoaded', domready);
+    win.on('load', domready);
+    module.exports = function (ready) {
+      loaded ? ready() : readys.push(ready);
+      return null;
+    };
+  },
+  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('../../../node_modules/elements/base.js');
+    require('../../../node_modules/elements/attributes.js');
+    require('../../../node_modules/elements/events.js');
+    require('../../../node_modules/elements/insertion.js');
+    require('../../../node_modules/elements/traversal.js');
+    require('../../../node_modules/elements/delegation.js');
+    module.exports = $;
+  },
+  '../../../node_modules/harmonizer/library.js': function (require, module, exports, global) {
+    'use strict';
+    var Symbol = global.Symbol || { iterator: '@@iterator' };
+    if (!(Symbol.iterator in Array.prototype))
+      Object.defineProperty(Array.prototype, Symbol.iterator, {
+        writable: true,
+        configurable: true,
+        value: function () {
+          var array = this, i = 0;
+          return {
+            next: function () {
+              if (i === array.length)
+                return {
+                  value: void 0,
+                  done: true
+                };
+              return {
+                value: array[i++],
+                done: false
+              };
+            }
+          };
+        }
+      });
+    exports.Symbol = Symbol;
+  },
+  '../../../node_modules/harmonizer/index.js': function (require, module, exports, global) {
+    'use strict';
+    var esprima = require('../../../node_modules/esprima/esprima.js');
+    var build = require('../../../node_modules/nodes/index.js');
+    var syntax = require('../../../node_modules/nodes/syntax.json');
+    var nodes = build.nodes;
+    var List = build.lists.List;
+    var capitalize = function (string) {
+      return string.replace(/(?:^|\s)\S/g, function (a) {
+        return a.toUpperCase();
+      });
+    };
+    var lowerFirst = function (string) {
+      return string.replace(/^[A-Z]/, function (a) {
+        return a.toLowerCase();
+      });
+    };
+    var listIndex = function (node) {
+      var lastNode = node, firstList;
+      while (node = node.parentNode) {
+        if (node instanceof List) {
+          firstList = node;
+          break;
+        } else {
+          lastNode = node;
+        }
+      }
+      if (!firstList)
+        throw new Error('parent list not found');
+      return {
+        list: firstList,
+        index: firstList.indexOf(lastNode)
+      };
+    };
+    var insertBefore = function (node, node2) {
+      var li = listIndex(node);
+      li.list.splice(li.index, 0, node2);
+    };
+    var insertAfter = function (node, node2) {
+      var li = listIndex(node);
+      li.list.splice(li.index + 1, 0, node2);
+    };
+    var express = function (string) {
+      return build(esprima.parse(string).body[0]);
+    };
+    var getUniqueName = function (node, name) {
+      var names = node.search('#Identifier:declaration > name, #Identifier:reference > name');
+      while (~names.indexOf(name))
+        name = '_' + name;
+      return name;
+    };
+    var getUniqueId = function (node, name) {
+      name = getUniqueName(node, name);
+      return new nodes.Identifier({ name: name });
+    };
+    var getSelfId = function (node) {
+      if (!node.selfId) {
+        var selfName = getUniqueName(node, 'self');
+        var declaration = express('var ' + selfName + ' = this');
+        var id = declaration.declarations[0].id;
+        var body = nodes.Function.test(node) ? node.body.body : node.body;
+        body.unshift(declaration);
+        node.selfId = id;
+      }
+      return node.selfId.clone();
+    };
+    var spread = function () {
+      var array = [], last = arguments.length - 1;
+      for (var i = 0; i < last; i++)
+        array.push(arguments[i]);
+      var iterator = arguments[last][Symbol.iterator](), step;
+      while (!(step = iterator.next()).done)
+        array.push(step.value);
+      return array;
+    };
+    var extend = function (SuperClass, Class, prototype, members) {
+      var descriptors = function (base, object) {
+        for (var key in object)
+          base[key] = Object.getOwnPropertyDescriptor(object, key);
+        return base;
+      };
+      Object.defineProperty(Class, 'prototype', { value: Object.create(SuperClass.prototype, descriptors({ value: Class }, prototype)) });
+      return Object.defineProperties(Class, descriptors({}, members));
+    };
+    var getSuperDescriptor = function (prototype, name) {
+      var descriptor;
+      while (prototype = Object.getPrototypeOf(prototype)) {
+        if (descriptor = Object.getOwnPropertyDescriptor(prototype, name))
+          return descriptor;
+      }
+    };
+    var getExtendId = function (node) {
+      if (!node.extendId) {
+        var extendName = getUniqueName(node, 'extend');
+        var declaration = express('var ' + extendName + ' = ' + extend.toString());
+        var id = declaration.declarations[0].id;
+        var body = nodes.Function.test(node) ? node.body.body : node.body;
+        body.unshift(declaration);
+        node.extendId = id;
+      }
+      return node.extendId;
+    };
+    var getSpreadId = function (node) {
+      if (!node.spreadId) {
+        var spreadName = getUniqueName(node, 'spread');
+        var declaration = express('var ' + spreadName + ' = ' + spread.toString());
+        var id = declaration.declarations[0].id;
+        var body = nodes.Function.test(node) ? node.body.body : node.body;
+        body.unshift(declaration);
+        node.spreadId = id;
+      }
+      return node.spreadId;
+    };
+    var getSliceId = function (node) {
+      if (!node.sliceId) {
+        var sliceName = getUniqueName(node, 'slice');
+        var declaration = express('var ' + sliceName + ' = Array.prototype.slice');
+        var id = declaration.declarations[0].id;
+        var body = nodes.Function.test(node) ? node.body.body : node.body;
+        body.unshift(declaration);
+        node.sliceId = id;
+      }
+      return node.sliceId;
+    };
+    var createDeclarator = function (id, init) {
+      return new nodes.VariableDeclarator({
+        id: id,
+        init: init
+      });
+    };
+    var createAssignment = function (left, right) {
+      return new nodes.AssignmentExpression({
+        operator: '=',
+        left: left,
+        right: right
+      });
+    };
+    var destruct = {
+        ArrayPattern: function (pattern, declarations, valueId, assign) {
+          var create = assign ? createAssignment : createDeclarator;
+          pattern.elements.forEachRight(function (element, i) {
+            if (element == null)
+              return;
+            var memberString = valueId ? valueId.name + '[' + i + ']' : null;
+            if (element.type === syntax.Identifier) {
+              declarations.unshift(create(element, memberString ? express(memberString).expression : null));
+            } else if (element.search('properties > * > value#Identifier, elements > #Identifier').length) {
+              var nestedId;
+              if (valueId) {
+                nestedId = getUniqueId(declarations.scope(), valueId.name + i);
+                var declaration = express('var ' + nestedId.name + ' = ' + memberString);
+                insertBefore(declarations, declaration);
+              }
+              destruct[element.type](element, declarations, nestedId, assign);
+            }
+          });
+        },
+        ObjectPattern: function (pattern, declarations, valueId, assign) {
+          var create = assign ? createAssignment : createDeclarator;
+          pattern.properties.forEachRight(function (property) {
+            var memberString = valueId ? valueId.name + '.' + property.key.name : null;
+            var value = property.value;
+            if (value.type === syntax.Identifier) {
+              declarations.unshift(create(value, memberString ? express(memberString).expression : null));
+            } else if (value.search('properties > * > value#Identifier, elements > #Identifier').length) {
+              var nestedId;
+              if (valueId) {
+                nestedId = getUniqueId(declarations.scope(), valueId.name + capitalize(property.key.name));
+                var declaration = express('var ' + nestedId.name + ' = ' + memberString);
+                insertBefore(declarations, declaration);
+              }
+              destruct[value.type](value, declarations, nestedId, assign);
+            }
+          });
+        }
+      };
+    function patternify(program) {
+      var q;
+      q = [
+        '#ForOfStatement > left > declarations > * > #ArrayPattern',
+        '#ForOfStatement > left > declarations > * > #ObjectPattern',
+        '#ForInStatement > left > declarations > * > #ArrayPattern',
+        '#ForInStatement > left > declarations > * > #ObjectPattern'
+      ];
+      program.search(q).forEachRight(function (pattern) {
+        var declarator = pattern.parentNode;
+        var declarations = declarator.parentNode;
+        var declaration = declarations.parentNode;
+        var forStatement = declaration.parentNode;
+        var valueId = getUniqueId(forStatement.scope(), lowerFirst(pattern.type));
+        declarations.replaceChild(declarator, new nodes.VariableDeclarator({
+          id: valueId,
+          kind: declaration.kind
+        }));
+        var newDeclaration = new nodes.VariableDeclaration();
+        forStatement.body.body.unshift(newDeclaration);
+        destruct[pattern.type](pattern, newDeclaration.declarations, valueId);
+      });
+      q = [
+        '#ForOfStatement > left#ArrayPattern',
+        '#ForOfStatement > left#ObjectPattern',
+        '#ForInStatement > left#ArrayPattern',
+        '#ForInStatement > left#ObjectPattern'
+      ];
+      program.search(q).forEachRight(function (pattern) {
+        var forStatement = pattern.parentNode;
+        var valueId = getUniqueId(forStatement.scope(), lowerFirst(pattern.type));
+        forStatement.left = express('var ' + valueId.name);
+        var expression = new nodes.ExpressionStatement();
+        var sequence = new nodes.SequenceExpression();
+        expression.expression = sequence;
+        forStatement.body.body.unshift(expression);
+        destruct[pattern.type](pattern, sequence.expressions, valueId, true);
+      });
+      q = '#VariableDeclarator > #ArrayPattern, #VariableDeclarator > #ObjectPattern';
+      program.search(q).forEachRight(function (pattern) {
+        var declarator = pattern.parentNode;
+        var declarations = declarator.parentNode;
+        var declaration = declarations.parentNode;
+        declarations.removeChild(declarator);
+        if (!pattern.search('properties > * > value#Identifier, elements > #Identifier').length) {
+          if (!declarations.length) {
+            declaration.parentNode.removeChild(declaration);
+          }
+          return;
+        }
+        if (declarator.init == null) {
+          destruct[pattern.type](pattern, declarations);
+        } else {
+          var valueId;
+          if (declarator.init.type === syntax.Identifier) {
+            valueId = declarator.init;
+          } else {
+            valueId = getUniqueId(declarations.scope(), lowerFirst(pattern.type));
+            var valueDeclaration = express('var ' + valueId.name + ' = $');
+            valueDeclaration.declarations[0].init = declarator.init;
+            insertBefore(declarations, valueDeclaration);
+          }
+          destruct[pattern.type](pattern, declarations, valueId);
+        }
+      });
+      q = '#AssignmentExpression > left#ArrayPattern, #AssignmentExpression > left#ObjectPattern';
+      program.search(q).forEachRight(function (pattern) {
+        var expression = pattern.parentNode;
+        var right = expression.right;
+        var expressions = expression.parentNode;
+        var sequence = expressions.parentNode;
+        if (sequence.type !== syntax.SequenceExpression) {
+          var key = expressions.indexOf(expression);
+          expressions[key] = new nodes.SequenceExpression({ expressions: [expressions[key]] });
+          expressions = expressions[key].expressions;
+        }
+        expressions.removeChild(expression);
+        sequence = expressions.parentNode;
+        var valueId;
+        if (right.type === syntax.Identifier) {
+          valueId = right;
+        } else {
+          valueId = getUniqueId(sequence.scope(), lowerFirst(pattern.type));
+          var declaration = express('var ' + valueId.name + ' = $');
+          declaration.declarations[0].init = right;
+          insertBefore(sequence, declaration);
+        }
+        destruct[pattern.type](pattern, expressions, valueId, true);
+      });
+      q = '#Function > params > #ArrayPattern, #Function > params > #ObjectPattern';
+      program.search(q).forEachRight(function (pattern) {
+        var params = pattern.parentNode;
+        var fn = params.parentNode;
+        var valueId = getUniqueId(fn, lowerFirst(pattern.type));
+        params.replaceChild(pattern, valueId);
+        if (!pattern.search('properties > * > value#Identifier, elements > #Identifier').length)
+          return;
+        var declaration = new nodes.VariableDeclaration();
+        fn.body.body.unshift(declaration);
+        destruct[pattern.type](pattern, declaration.declarations, valueId);
+      });
+    }
+    function defaultify(program) {
+      program.search('#Function').forEach(function (fn) {
+        if (fn.defaults.length === 0)
+          return;
+        var params = fn.params;
+        var defaults = fn.defaults;
+        defaults.forEachRight(function (node, i) {
+          if (node == null)
+            return defaults.removeChild(node);
+          var param = params[i];
+          var statement = express('if (' + param.name + ' === void 0) ' + param.name + ' = $');
+          statement.consequent.expression.right = node;
+          fn.body.body.unshift(statement);
+        });
+      });
+    }
+    function deshorthandify(program) {
+      program.search('#Property').forEach(function (node) {
+        node.shorthand = false;
+        node.method = false;
+      });
+    }
+    function restify(program) {
+      program.search('#Function[rest!=null]').forEach(function (node) {
+        var block = node.body.body;
+        var length = node.params.length;
+        var sliceId = getSliceId(program).clone();
+        var declaration = express('var ' + node.rest.name + ' = ' + sliceId.name + '.call(arguments' + (length === 0 ? '' : ', ' + length) + ')');
+        node.rest = null;
+        block.unshift(declaration);
+      });
+    }
+    function arrowify(program) {
+      program.search('#ArrowFunctionExpression => #ThisExpression').forEach(function (thisExpression) {
+        var arrowFunction = thisExpression.scope();
+        var arrowScope = arrowFunction.scope('[type!=ArrowFunctionExpression]');
+        var selfId = getSelfId(arrowScope);
+        thisExpression.parentNode.replaceChild(thisExpression, selfId.clone());
+      });
+      program.search('#ArrowFunctionExpression').forEach(function (node) {
+        var shallow = new nodes.FunctionExpression(node);
+        node.parentNode.replaceChild(node, shallow);
+      });
+    }
+    function forofify(program) {
+      program.search('#ForOfStatement').forEach(function (node) {
+        var forStatement = new nodes.ForStatement();
+        var left = node.left;
+        var iteratorId = getUniqueId(node.scope(), 'iterator');
+        var stepId = getUniqueId(node.scope(), 'step');
+        forStatement.body = node.body;
+        var init = new nodes.CallExpression({
+            callee: new nodes.MemberExpression({
+              computed: true,
+              object: node.right,
+              property: express('Symbol.iterator').expression
+            })
+          });
+        forStatement.init = new nodes.VariableDeclaration({
+          declarations: [
+            new nodes.VariableDeclarator({
+              id: iteratorId,
+              init: init
+            }),
+            new nodes.VariableDeclarator({ id: stepId })
+          ]
+        });
+        forStatement.test = express('!(' + stepId.name + ' = ' + iteratorId.name + '.next()).done').expression;
+        var expression, xp = express(stepId.name + '.value').expression;
+        if (left.type === syntax.VariableDeclaration) {
+          left.declarations[0].init = xp;
+          expression = left;
+        } else {
+          expression = new nodes.AssignmentExpression({
+            operator: '=',
+            left: left,
+            right: xp
+          });
+        }
+        forStatement.body.body.unshift(expression);
+        node.parentNode.replaceChild(node, forStatement);
+      });
+    }
+    var applyContext = function (node, context) {
+      var args = node.arguments;
+      var spread = args[args.length - 1];
+      var propertyName;
+      if (spread && spread.type === syntax.SpreadElement) {
+        args.replaceChild(spread, spread.argument);
+        var spreadId = getSpreadId(node.root).clone();
+        var spreadCall = express(spreadId.name + '()').expression;
+        spreadCall.arguments.push.apply(spreadCall.arguments, args);
+        args.push(spreadCall);
+        propertyName = 'apply';
+      } else {
+        propertyName = 'call';
+      }
+      var callee = node.callee;
+      var object = callee.object;
+      if (!context) {
+        if (callee.type !== syntax.MemberExpression) {
+          args.unshift(new nodes.Literal({ value: null }));
+        } else {
+          if (object.type !== syntax.Identifier) {
+            var contextId = getUniqueId(node.scope(), lowerFirst(object.type));
+            var declaration = express('var ' + contextId.name + ' = $');
+            var declarator = declaration.declarations[0];
+            declarator.init = object;
+            insertBefore(node, declaration);
+            object = callee.object = contextId;
+          }
+          args.unshift(object.clone());
+        }
+      } else {
+        args.unshift(context);
+      }
+      node.callee = new nodes.MemberExpression({
+        object: node.callee,
+        property: new nodes.Identifier({ name: propertyName })
+      });
+    };
+    function spreadify(program) {
+      program.search('#SpreadElement < arguments < #CallExpression').forEach(function (node) {
+        applyContext(node);
+      });
+      program.search('#SpreadElement < elements < #ArrayExpression').forEach(function (node) {
+        var elements = node.elements;
+        var spread = elements[elements.length - 1];
+        elements.replaceChild(spread, spread.argument);
+        var spreadId = getSpreadId(program).clone();
+        var spreadCall = express(spreadId.name + '()').expression;
+        spreadCall.arguments.push.apply(spreadCall.arguments, elements);
+        node.parentNode.replaceChild(node, spreadCall);
+      });
+    }
+    function comprehendify(program) {
+      program.search('#ComprehensionExpression').forEach(function (node) {
+        var parentNode = node.parentNode;
+        var blocks = node.blocks;
+        var wrapper = express('(function(){})()').expression;
+        var body = wrapper.callee.body.body;
+        var comprehensionId = new nodes.Identifier({ name: '$' });
+        var identifiers = [comprehensionId];
+        var comprehensionDeclaration = new nodes.VariableDeclaration({
+            declarations: [new nodes.VariableDeclarator({
+                id: comprehensionId,
+                init: new nodes.ArrayExpression()
+              })]
+          });
+        var forOfRoot, forOfInnermost;
+        blocks.forEach(function (block) {
+          var forOfStatement = new nodes.ForOfStatement();
+          forOfStatement.left = new nodes.VariableDeclaration({ declarations: [new nodes.VariableDeclarator({ id: block.left })] });
+          forOfStatement.right = block.right;
+          forOfStatement.body = new nodes.BlockStatement();
+          if (forOfInnermost)
+            forOfInnermost.body.body.push(forOfStatement);
+          else
+            forOfRoot = forOfStatement;
+          forOfInnermost = forOfStatement;
+        });
+        var pushCallExpression = express(comprehensionId.name + '.push()');
+        pushCallExpression.expression.arguments.push(node.body);
+        identifiers.push(pushCallExpression.expression.callee.object);
+        if (node.filter) {
+          var ifStatement = new nodes.IfStatement({
+              test: node.filter,
+              consequent: pushCallExpression
+            });
+          forOfInnermost.body.body.push(ifStatement);
+        } else {
+          forOfInnermost.body.body.push(pushCallExpression);
+        }
+        var returnStatement = new nodes.ReturnStatement({ argument: comprehensionId.clone() });
+        identifiers.push(returnStatement.argument);
+        body.push(comprehensionDeclaration, forOfRoot, returnStatement);
+        parentNode.replaceChild(node, wrapper);
+        var comprehensionName = getUniqueName(wrapper.callee, 'comprehension');
+        identifiers.forEach(function (id) {
+          id.name = comprehensionName;
+        });
+      });
+    }
+    function classify(program) {
+      program.search('#Class').forEach(function (node) {
+        var definitions = node.body.body;
+        var scope = node.scope();
+        var superClass = node.superClass;
+        var extendId = getExtendId(program).clone();
+        var superClassDeclaration;
+        if (superClass && superClass.type !== syntax.Identifier) {
+          var superClassId = getUniqueId(scope, 'Super' + capitalize(node.id.name));
+          superClassDeclaration = new nodes.VariableDeclaration({
+            declarations: [new nodes.VariableDeclarator({
+                id: superClassId,
+                init: superClass
+              })]
+          });
+          superClass = node.superClass = superClassId.clone();
+        }
+        if (superClass)
+          definitions.search('>> #CallExpression > callee#Identifier[name=super]').forEach(function (id) {
+            var call = id.parentNode;
+            var definition = call.parent('#MethodDefinition');
+            var methodId = definition.key;
+            var definitionFunction = definition.value;
+            var superCallExpression;
+            if (methodId.name === 'constructor') {
+              superCallExpression = superClass.clone();
+            } else {
+              superCallExpression = express(superClass.name + '.prototype.' + methodId.name).expression;
+            }
+            var scope = id.scope();
+            var selfId;
+            if (scope !== definitionFunction)
+              selfId = getSelfId(definitionFunction);
+            else
+              selfId = new nodes.ThisExpression();
+            call.callee = superCallExpression;
+            applyContext(call, selfId);
+          });
+        var constructorFunction = definitions.search('> #MethodDefinition > key[name=constructor] < * > value')[0];
+        if (constructorFunction) {
+          constructorFunction.id = node.id;
+          definitions.removeChild(constructorFunction.parentNode);
+          constructorFunction = new nodes.FunctionDeclaration(constructorFunction);
+        } else {
+          constructorFunction = express('function ' + node.id.name + '() {' + (superClass ? 'return ' + superClass.name + '.apply(this, arguments)' : '') + '}');
+        }
+        if (!superClass)
+          superClass = new nodes.Identifier({ name: 'Object' });
+        var prototype = new nodes.ObjectExpression();
+        var members = new nodes.ObjectExpression();
+        definitions.forEach(function (definition) {
+          (definition.static ? members : prototype).properties.push(new nodes.Property({
+            key: definition.key,
+            value: definition.value,
+            kind: definition.kind || 'init'
+          }));
+        });
+        var extendExpression = express(extendId.name + '()');
+        extendExpression.expression.arguments.push(superClass, constructorFunction.id.clone(), prototype, members);
+        if (node.type === syntax.ClassExpression) {
+          constructorFunction = new nodes.FunctionExpression(constructorFunction);
+          extendExpression.expression.arguments.splice(1, 1, constructorFunction);
+          if (superClassDeclaration) {
+            var wrapper = express('(function(){})()').expression;
+            var body = wrapper.callee.body.body;
+            var returnStatement = new nodes.ReturnStatement({ argument: extendExpression.expression });
+            body.push(superClassDeclaration);
+            body.push(returnStatement);
+            node.parentNode.replaceChild(node, wrapper);
+          } else {
+            node.parentNode.replaceChild(node, extendExpression.expression);
+          }
+        } else {
+          node.parentNode.replaceChild(node, constructorFunction);
+          insertAfter(constructorFunction, extendExpression);
+          if (superClassDeclaration)
+            insertBefore(constructorFunction, superClassDeclaration);
+        }
+      });
+    }
+    function templateify(program) {
+      program.search('#TemplateLiteral').forEach(function (node) {
+        var parts = [];
+        var stringFound;
+        node.quasis.forEach(function (quasi, i) {
+          var cooked = quasi.value.cooked;
+          if (cooked) {
+            stringFound = true;
+            parts.push(new nodes.Literal({ value: quasi.value.cooked }));
+          }
+          if (i in node.expressions)
+            parts.push(node.expressions[i]);
+        });
+        if (!stringFound)
+          parts.push(new nodes.Literal({ value: '' }));
+        if (parts.length === 1) {
+          node.parentNode.replaceChild(node, parts[0]);
+          return;
+        }
+        var bin = new nodes.BinaryExpression({
+            operator: '+',
+            left: parts.shift(),
+            right: parts.pop()
+          });
+        var binaryExpression = parts.reduceRight(function (bin, part, i) {
+            return bin.left = new nodes.BinaryExpression({
+              operator: '+',
+              left: bin.left,
+              right: part
+            });
+          }, bin);
+        node.parentNode.replaceChild(node, bin);
+      });
+    }
+    var isFor = function (node) {
+      var type;
+      return node && (type = node.type) && (type === syntax.ForStatement || type === syntax.ForInStatement || type === syntax.ForOfStatement);
+    };
+    var lookupReferenceLetDeclarators = function (node) {
+      var name = node.name;
+      var identifiers;
+      var dec = '#VariableDeclaration[kind=let] #Identifier:declaration[name=' + name + ']';
+      while (node = node.parentNode) {
+        if (isFor(node) || node.type === syntax.BlockStatement || node.type === syntax.Program) {
+          identifiers = node.search('~> ' + dec);
+          if (identifiers.length) {
+            var ancestor = node.parentNode;
+            if (isFor(ancestor))
+              node = ancestor;
+            return [
+              node,
+              identifiers
+            ];
+          }
+        }
+      }
+    };
+    function letify(program) {
+      var uniqueNameMap = {};
+      program.search(':reference').forEach(function (ref) {
+        var parent = ref.parentNode;
+        var result = lookupReferenceLetDeclarators(ref);
+        if (!result)
+          return;
+        var block = result[0], identifiers = result[1];
+        var map = uniqueNameMap[block.uid] || (uniqueNameMap[block.uid] = {});
+        var scope = block === program ? block : block.scope();
+        var name = ref.name;
+        identifiers.forEach(function (dec) {
+          var uniqueName = map[name] || (map[name] = getUniqueName(scope, name));
+          dec.var_name = uniqueName;
+        });
+        ref.name = map[name];
+      });
+      var lets = program.search('#VariableDeclaration[kind=let]');
+      lets.forEach(function (node) {
+        node.kind = 'var';
+      });
+      lets.search('#Identifier:declaration').forEach(function (node) {
+        if (node.var_name) {
+          node.name = node.var_name;
+          delete node.var_name;
+        } else {
+          var uniqueName = getUniqueName(node.scope(), node.name);
+          node.name = uniqueName;
+        }
+      });
+    }
+    function blockify(program) {
+      var statementBodies = [
+          '#IfStatement > alternate',
+          '#IfStatement > consequent',
+          '#ForStatement > body',
+          '#ForInStatement > body',
+          '#ForOfStatement > body',
+          '#WhileStatement > body',
+          '#DoWhileStatement > body',
+          '#LabeledStatement > body'
+        ].map(function (type) {
+          return type + '[type!=BlockStatement]';
+        });
+      program.search(statementBodies).forEach(function (statement) {
+        var parentNode = statement.parentNode;
+        var key = parentNode.indexOf(statement);
+        parentNode[key] = new nodes.BlockStatement({ body: [statement] });
+      });
+      program.search('#ArrowFunctionExpression[expression=true]').forEach(function (node) {
+        node.expression = false;
+        node.body = new nodes.BlockStatement({ body: [new nodes.ReturnStatement({ argument: node.body })] });
+      });
+    }
+    function transform(tree) {
+      var program = build(tree);
+      window.program = program;
+      blockify(program);
+      deshorthandify(program);
+      arrowify(program);
+      restify(program);
+      comprehendify(program);
+      forofify(program);
+      patternify(program);
+      defaultify(program);
+      classify(program);
+      spreadify(program);
+      templateify(program);
+      letify(program);
+      return program;
+    }
+    module.exports = transform;
+  },
+  '../../../node_modules/tosource/tosource.js': function (require, module, exports, global) {
+    module.exports = function (object, filter, indent, startingIndent) {
+      var seen = [];
+      return walk(object, filter, indent === undefined ? '  ' : indent || '', startingIndent || '', seen);
+      function walk(object, filter, indent, currentIndent, seen) {
+        var nextIndent = currentIndent + indent;
+        object = filter ? filter(object) : object;
+        switch (typeof object) {
+        case 'string':
+          return JSON.stringify(object);
+        case 'boolean':
+        case 'number':
+        case 'function':
+        case 'undefined':
+          return '' + object;
+        }
+        if (object === null)
+          return 'null';
+        if (object instanceof RegExp)
+          return object.toString();
+        if (object instanceof Date)
+          return 'new Date(' + object.getTime() + ')';
+        if (seen.indexOf(object) >= 0)
+          return '{$circularReference:1}';
+        seen.push(object);
+        function join(elements) {
+          return indent.slice(1) + elements.join(',' + (indent && '\n') + nextIndent) + (indent ? ' ' : '');
+        }
+        if (Array.isArray(object)) {
+          return '[' + join(object.map(function (element) {
+            return walk(element, filter, indent, nextIndent, seen.slice());
+          })) + ']';
+        }
+        var keys = Object.keys(object);
+        return keys.length ? '{' + join(keys.map(function (key) {
+          return (legalKey(key) ? key : JSON.stringify(key)) + ':' + walk(object[key], filter, indent, nextIndent, seen.slice());
+        })) + '}' : '{}';
+      }
+    };
+    var KEYWORD_REGEXP = /^(abstract|boolean|break|byte|case|catch|char|class|const|continue|debugger|default|delete|do|double|else|enum|export|extends|false|final|finally|float|for|function|goto|if|implements|import|in|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|super|switch|synchronized|this|throw|throws|transient|true|try|typeof|undefined|var|void|volatile|while|with)$/;
+    function legalKey(string) {
+      return /^[a-z_$][0-9a-z_$]*$/gi.test(string) && !KEYWORD_REGEXP.test(string);
+    }
+  },
   '../../../node_modules/elements/events.js': function (require, module, exports, global) {
     'use strict';
     var Emitter = require('../../../node_modules/prime/emitter.js');
@@ -7642,81 +7700,6 @@
     exports.SourceMapConsumer = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/source-map-consumer.js').SourceMapConsumer;
     exports.SourceNode = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/source-node.js').SourceNode;
   },
-  '../../../node_modules/nodes/syntax.json': function (require, module, exports, global) {
-    module.exports = {
-      'ArrayExpression': 'ArrayExpression',
-      'ArrayPattern': 'ArrayPattern',
-      'ArrowFunctionExpression': 'ArrowFunctionExpression',
-      'AssignmentExpression': 'AssignmentExpression',
-      'BinaryExpression': 'BinaryExpression',
-      'BlockStatement': 'BlockStatement',
-      'BreakStatement': 'BreakStatement',
-      'CallExpression': 'CallExpression',
-      'CatchClause': 'CatchClause',
-      'ClassBody': 'ClassBody',
-      'ClassDeclaration': 'ClassDeclaration',
-      'ClassExpression': 'ClassExpression',
-      'ComprehensionBlock': 'ComprehensionBlock',
-      'ComprehensionExpression': 'ComprehensionExpression',
-      'ConditionalExpression': 'ConditionalExpression',
-      'ContinueStatement': 'ContinueStatement',
-      'DebuggerStatement': 'DebuggerStatement',
-      'DoWhileStatement': 'DoWhileStatement',
-      'EmptyStatement': 'EmptyStatement',
-      'ExportDeclaration': 'ExportDeclaration',
-      'ExportBatchSpecifier': 'ExportBatchSpecifier',
-      'ExportSpecifier': 'ExportSpecifier',
-      'ExpressionStatement': 'ExpressionStatement',
-      'ForInStatement': 'ForInStatement',
-      'ForOfStatement': 'ForOfStatement',
-      'ForStatement': 'ForStatement',
-      'FunctionDeclaration': 'FunctionDeclaration',
-      'FunctionExpression': 'FunctionExpression',
-      'Identifier': 'Identifier',
-      'IfStatement': 'IfStatement',
-      'ImportDeclaration': 'ImportDeclaration',
-      'ImportSpecifier': 'ImportSpecifier',
-      'LabeledStatement': 'LabeledStatement',
-      'Literal': 'Literal',
-      'LogicalExpression': 'LogicalExpression',
-      'MemberExpression': 'MemberExpression',
-      'MethodDefinition': 'MethodDefinition',
-      'ModuleDeclaration': 'ModuleDeclaration',
-      'NewExpression': 'NewExpression',
-      'ObjectExpression': 'ObjectExpression',
-      'ObjectPattern': 'ObjectPattern',
-      'Program': 'Program',
-      'Property': 'Property',
-      'ReturnStatement': 'ReturnStatement',
-      'SequenceExpression': 'SequenceExpression',
-      'SpreadElement': 'SpreadElement',
-      'SwitchCase': 'SwitchCase',
-      'SwitchStatement': 'SwitchStatement',
-      'TaggedTemplateExpression': 'TaggedTemplateExpression',
-      'TemplateElement': 'TemplateElement',
-      'TemplateLiteral': 'TemplateLiteral',
-      'ThisExpression': 'ThisExpression',
-      'ThrowStatement': 'ThrowStatement',
-      'TryStatement': 'TryStatement',
-      'UnaryExpression': 'UnaryExpression',
-      'UpdateExpression': 'UpdateExpression',
-      'VariableDeclaration': 'VariableDeclaration',
-      'VariableDeclarator': 'VariableDeclarator',
-      'WhileStatement': 'WhileStatement',
-      'WithStatement': 'WithStatement',
-      'YieldExpression': 'YieldExpression'
-    };
-  },
-  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
-    'use strict';
-    require('../../../node_modules/nodes/lib/finder.js');
-    var types = require('../../../node_modules/nodes/types.js');
-    var factory = require('../../../node_modules/nodes/lib/factory.js');
-    var build = factory.build;
-    build.nodes = types;
-    build.lists = factory.lists;
-    module.exports = build;
-  },
   '../../../node_modules/estraverse/estraverse.js': function (require, module, exports, global) {
     (function (root, factory) {
       'use strict';
@@ -8329,6 +8312,81 @@
       exports.Controller = Controller;
     }));
   },
+  '../../../node_modules/nodes/syntax.json': function (require, module, exports, global) {
+    module.exports = {
+      'ArrayExpression': 'ArrayExpression',
+      'ArrayPattern': 'ArrayPattern',
+      'ArrowFunctionExpression': 'ArrowFunctionExpression',
+      'AssignmentExpression': 'AssignmentExpression',
+      'BinaryExpression': 'BinaryExpression',
+      'BlockStatement': 'BlockStatement',
+      'BreakStatement': 'BreakStatement',
+      'CallExpression': 'CallExpression',
+      'CatchClause': 'CatchClause',
+      'ClassBody': 'ClassBody',
+      'ClassDeclaration': 'ClassDeclaration',
+      'ClassExpression': 'ClassExpression',
+      'ComprehensionBlock': 'ComprehensionBlock',
+      'ComprehensionExpression': 'ComprehensionExpression',
+      'ConditionalExpression': 'ConditionalExpression',
+      'ContinueStatement': 'ContinueStatement',
+      'DebuggerStatement': 'DebuggerStatement',
+      'DoWhileStatement': 'DoWhileStatement',
+      'EmptyStatement': 'EmptyStatement',
+      'ExportDeclaration': 'ExportDeclaration',
+      'ExportBatchSpecifier': 'ExportBatchSpecifier',
+      'ExportSpecifier': 'ExportSpecifier',
+      'ExpressionStatement': 'ExpressionStatement',
+      'ForInStatement': 'ForInStatement',
+      'ForOfStatement': 'ForOfStatement',
+      'ForStatement': 'ForStatement',
+      'FunctionDeclaration': 'FunctionDeclaration',
+      'FunctionExpression': 'FunctionExpression',
+      'Identifier': 'Identifier',
+      'IfStatement': 'IfStatement',
+      'ImportDeclaration': 'ImportDeclaration',
+      'ImportSpecifier': 'ImportSpecifier',
+      'LabeledStatement': 'LabeledStatement',
+      'Literal': 'Literal',
+      'LogicalExpression': 'LogicalExpression',
+      'MemberExpression': 'MemberExpression',
+      'MethodDefinition': 'MethodDefinition',
+      'ModuleDeclaration': 'ModuleDeclaration',
+      'NewExpression': 'NewExpression',
+      'ObjectExpression': 'ObjectExpression',
+      'ObjectPattern': 'ObjectPattern',
+      'Program': 'Program',
+      'Property': 'Property',
+      'ReturnStatement': 'ReturnStatement',
+      'SequenceExpression': 'SequenceExpression',
+      'SpreadElement': 'SpreadElement',
+      'SwitchCase': 'SwitchCase',
+      'SwitchStatement': 'SwitchStatement',
+      'TaggedTemplateExpression': 'TaggedTemplateExpression',
+      'TemplateElement': 'TemplateElement',
+      'TemplateLiteral': 'TemplateLiteral',
+      'ThisExpression': 'ThisExpression',
+      'ThrowStatement': 'ThrowStatement',
+      'TryStatement': 'TryStatement',
+      'UnaryExpression': 'UnaryExpression',
+      'UpdateExpression': 'UpdateExpression',
+      'VariableDeclaration': 'VariableDeclaration',
+      'VariableDeclarator': 'VariableDeclarator',
+      'WhileStatement': 'WhileStatement',
+      'WithStatement': 'WithStatement',
+      'YieldExpression': 'YieldExpression'
+    };
+  },
+  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
+    'use strict';
+    require('../../../node_modules/nodes/lib/finder.js');
+    var types = require('../../../node_modules/nodes/types.js');
+    var factory = require('../../../node_modules/nodes/lib/factory.js');
+    var build = factory.build;
+    build.nodes = types;
+    build.lists = factory.lists;
+    module.exports = build;
+  },
   '../../../node_modules/prime/emitter.js': function (require, module, exports, global) {
     'use strict';
     var indexOf = require('../../../node_modules/mout/array/indexOf.js'), forEach = require('../../../node_modules/mout/array/forEach.js');
@@ -8381,6 +8439,71 @@
       });
     Emitter.EMIT_SYNC = {};
     module.exports = Emitter;
+  },
+  '../../../node_modules/prime/index.js': function (require, module, exports, global) {
+    'use strict';
+    var hasOwn = require('../../../node_modules/mout/object/hasOwn.js'), mixIn = require('../../../node_modules/mout/object/mixIn.js'), create = require('../../../node_modules/mout/lang/createObject.js'), kindOf = require('../../../node_modules/mout/lang/kindOf.js');
+    var hasDescriptors = true;
+    try {
+      Object.defineProperty({}, '~', {});
+      Object.getOwnPropertyDescriptor({}, '~');
+    } catch (e) {
+      hasDescriptors = false;
+    }
+    var hasEnumBug = !{ valueOf: 0 }.propertyIsEnumerable('valueOf'), buggy = [
+        'toString',
+        'valueOf'
+      ];
+    var verbs = /^constructor|inherits|mixin$/;
+    var implement = function (proto) {
+      var prototype = this.prototype;
+      for (var key in proto) {
+        if (key.match(verbs))
+          continue;
+        if (hasDescriptors) {
+          var descriptor = Object.getOwnPropertyDescriptor(proto, key);
+          if (descriptor) {
+            Object.defineProperty(prototype, key, descriptor);
+            continue;
+          }
+        }
+        prototype[key] = proto[key];
+      }
+      if (hasEnumBug)
+        for (var i = 0; key = buggy[i]; i++) {
+          var value = proto[key];
+          if (value !== Object.prototype[key])
+            prototype[key] = value;
+        }
+      return this;
+    };
+    var prime = function (proto) {
+      if (kindOf(proto) === 'Function')
+        proto = { constructor: proto };
+      var superprime = proto.inherits;
+      var constructor = hasOwn(proto, 'constructor') ? proto.constructor : superprime ? function () {
+          return superprime.apply(this, arguments);
+        } : function () {
+        };
+      if (superprime) {
+        mixIn(constructor, superprime);
+        var superproto = superprime.prototype;
+        var cproto = constructor.prototype = create(superproto);
+        constructor.parent = superproto;
+        cproto.constructor = constructor;
+      }
+      if (!constructor.implement)
+        constructor.implement = implement;
+      var mixins = proto.mixin;
+      if (mixins) {
+        if (kindOf(mixins) !== 'Array')
+          mixins = [mixins];
+        for (var i = 0; i < mixins.length; i++)
+          constructor.implement(create(mixins[i].prototype));
+      }
+      return constructor.implement(proto);
+    };
+    module.exports = prime;
   },
   '../../../node_modules/prime/map.js': function (require, module, exports, global) {
     'use strict';
@@ -8483,70 +8606,19 @@
     map.prototype = Map.prototype;
     module.exports = map;
   },
-  '../../../node_modules/prime/index.js': function (require, module, exports, global) {
-    'use strict';
-    var hasOwn = require('../../../node_modules/mout/object/hasOwn.js'), mixIn = require('../../../node_modules/mout/object/mixIn.js'), create = require('../../../node_modules/mout/lang/createObject.js'), kindOf = require('../../../node_modules/mout/lang/kindOf.js');
-    var hasDescriptors = true;
-    try {
-      Object.defineProperty({}, '~', {});
-      Object.getOwnPropertyDescriptor({}, '~');
-    } catch (e) {
-      hasDescriptors = false;
+  '../../../node_modules/mout/array/forEach.js': function (require, module, exports, global) {
+    function forEach(arr, callback, thisObj) {
+      if (arr == null) {
+        return;
+      }
+      var i = -1, len = arr.length;
+      while (++i < len) {
+        if (callback.call(thisObj, arr[i], i, arr) === false) {
+          break;
+        }
+      }
     }
-    var hasEnumBug = !{ valueOf: 0 }.propertyIsEnumerable('valueOf'), buggy = [
-        'toString',
-        'valueOf'
-      ];
-    var verbs = /^constructor|inherits|mixin$/;
-    var implement = function (proto) {
-      var prototype = this.prototype;
-      for (var key in proto) {
-        if (key.match(verbs))
-          continue;
-        if (hasDescriptors) {
-          var descriptor = Object.getOwnPropertyDescriptor(proto, key);
-          if (descriptor) {
-            Object.defineProperty(prototype, key, descriptor);
-            continue;
-          }
-        }
-        prototype[key] = proto[key];
-      }
-      if (hasEnumBug)
-        for (var i = 0; key = buggy[i]; i++) {
-          var value = proto[key];
-          if (value !== Object.prototype[key])
-            prototype[key] = value;
-        }
-      return this;
-    };
-    var prime = function (proto) {
-      if (kindOf(proto) === 'Function')
-        proto = { constructor: proto };
-      var superprime = proto.inherits;
-      var constructor = hasOwn(proto, 'constructor') ? proto.constructor : superprime ? function () {
-          return superprime.apply(this, arguments);
-        } : function () {
-        };
-      if (superprime) {
-        mixIn(constructor, superprime);
-        var superproto = superprime.prototype;
-        var cproto = constructor.prototype = create(superproto);
-        constructor.parent = superproto;
-        cproto.constructor = constructor;
-      }
-      if (!constructor.implement)
-        constructor.implement = implement;
-      var mixins = proto.mixin;
-      if (mixins) {
-        if (kindOf(mixins) !== 'Array')
-          mixins = [mixins];
-        for (var i = 0; i < mixins.length; i++)
-          constructor.implement(create(mixins[i].prototype));
-      }
-      return constructor.implement(proto);
-    };
-    module.exports = prime;
+    module.exports = forEach;
   },
   '../../../node_modules/mout/array/map.js': function (require, module, exports, global) {
     var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
@@ -8563,20 +8635,6 @@
       return results;
     }
     module.exports = map;
-  },
-  '../../../node_modules/mout/array/forEach.js': function (require, module, exports, global) {
-    function forEach(arr, callback, thisObj) {
-      if (arr == null) {
-        return;
-      }
-      var i = -1, len = arr.length;
-      while (++i < len) {
-        if (callback.call(thisObj, arr[i], i, arr) === false) {
-          break;
-        }
-      }
-    }
-    module.exports = forEach;
   },
   '../../../node_modules/mout/array/filter.js': function (require, module, exports, global) {
     var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
@@ -9297,6 +9355,34 @@
             return visitor.call(node, value, key);
           }, true);
         },
+        '~>': function (node, visitor) {
+          return node.traverse(function (value, key, skip) {
+            if (types.BlockStatement.test(value))
+              return skip;
+            return visitor.call(node, value, key);
+          }, true);
+        },
+        '=>': function (node, visitor) {
+          return node.traverse(function (value, key, skip) {
+            if (types.Function.test(value))
+              return skip;
+            return visitor.call(node, value, key);
+          }, true);
+        },
+        '+>': function (node, visitor) {
+          return node.traverse(function (value, key, skip) {
+            if (types.FunctionExpression.test(value) || types.FunctionDeclaration.test(value))
+              return skip;
+            return visitor.call(node, value, key);
+          }, true);
+        },
+        '>>': function (node, visitor) {
+          return node.traverse(function (value, key, skip) {
+            if (types.Class.test(value))
+              return skip;
+            return visitor.call(node, value, key);
+          }, true);
+        },
         '>': function (node, visitor) {
           return node.traverse(function (value, key) {
             return visitor.call(node, value, key);
@@ -9446,30 +9532,6 @@
             return parent;
         }
       });
-    var parentsMe = d(function (expression) {
-        var parent = this;
-        var parents = new BaseList();
-        while (parent = parent.parentNode) {
-          if (!expression || parent.matches(expression))
-            parents.push(parent);
-        }
-        return parents;
-      });
-    var scopesMe = d(function (expression) {
-        var parentNode = this.parentNode;
-        var scopes = new BaseList();
-        if (!parentNode)
-          return scopes;
-        if (syntax.Identifier === this.type && syntax.FunctionDeclaration === parentNode.type && parentNode.id === this) {
-          return parentNode.scopes(expression);
-        }
-        var parent = this;
-        while (parent = parent.parentNode) {
-          if (pseudos.scope(parent) && (!expression || parent.matches(expression)))
-            scopes.push(parent);
-        }
-        return scopes;
-      });
     var matchesMe = d(function (expression) {
         var expressions = parse(expression);
         if (expressions.length === 1 && expressions[0].length === 1) {
@@ -9483,16 +9545,12 @@
       });
     define(Node.prototype, 'search', searchMe);
     define(Node.prototype, 'parent', parentMe);
-    define(Node.prototype, 'parents', parentsMe);
     define(Node.prototype, 'matches', matchesMe);
     define(Node.prototype, 'scope', scopeMe);
-    define(Node.prototype, 'scopes', scopesMe);
     define(BaseList.prototype, 'search', searchMe);
     define(BaseList.prototype, 'parent', parentMe);
-    define(BaseList.prototype, 'parents', parentsMe);
     define(BaseList.prototype, 'matches', matchesMe);
     define(BaseList.prototype, 'scope', scopeMe);
-    define(BaseList.prototype, 'scopes', scopesMe);
     exports.iterators = iterators;
     exports.pseudos = pseudos;
   },
@@ -9685,10 +9743,10 @@
         return JSON.stringify(this, null, 2);
       }),
       traverse: d(function (visitor, deep) {
-        var found;
+        var found, skip = {};
         for (var i = 0; i < this.length; i++) {
           var node = this[i];
-          found = visitor.call(this, node, i);
+          found = visitor.call(this, node, i, skip);
           if (found === skip)
             continue;
           if (found !== void 0)
@@ -9710,6 +9768,15 @@
         var list = new BaseList();
         for (var i = 0; i < this.length; i++)
           list.push(this[i]);
+        return list;
+      }),
+      filter: d(function (method, ctx) {
+        var list = new BaseList();
+        for (var i = 0; i < this.length; i++) {
+          var value = this[i];
+          if (method.call(ctx, value, i, this))
+            list.push(value);
+        }
         return list;
       }),
       root: rootMe
@@ -9801,7 +9868,6 @@
         }
       }
     }
-    var skip = {};
     Node.prototype = create({}, {
       constructor: p(Node),
       removeChild: d(function (child) {
@@ -9828,14 +9894,14 @@
         return JSON.stringify(this, null, 2);
       }),
       traverse: d(function (visitor, deep) {
-        var found;
+        var found, skip = {};
         var keys = this.constructor.keys;
         for (var i = 0; i < keys.length; i++) {
           var key = keys[i];
           if (/^(loc|range)$/.test(key))
             continue;
           var value = this[key];
-          found = visitor.call(this, value, key);
+          found = visitor.call(this, value, key, skip);
           if (found === skip)
             continue;
           if (found !== void 0)
@@ -9906,7 +9972,6 @@
       }
       return self;
     }
-    exports.skip = skip;
     exports.Node = Node;
     exports.List = List;
     exports.BaseList = BaseList;
@@ -9920,36 +9985,6 @@
     exports.describe = describe;
     exports.expect = expect;
     exports.build = build;
-  },
-  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
-    function hasOwn(obj, prop) {
-      return Object.prototype.hasOwnProperty.call(obj, prop);
-    }
-    module.exports = hasOwn;
-  },
-  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
-    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
-    function mixIn(target, objects) {
-      var i = 0, n = arguments.length, obj;
-      while (++i < n) {
-        obj = arguments[i];
-        if (obj != null) {
-          forOwn(obj, copyProp, target);
-        }
-      }
-      return target;
-    }
-    function copyProp(val, key) {
-      this[key] = val;
-    }
-    module.exports = mixIn;
-  },
-  '../../../node_modules/mout/lang/isKind.js': function (require, module, exports, global) {
-    var kindOf = require('../../../node_modules/mout/lang/kindOf.js');
-    function isKind(val, kind) {
-      return kindOf(val) === kind;
-    }
-    module.exports = isKind;
   },
   '../../../node_modules/escodegen/node_modules/esutils/lib/code.js': function (require, module, exports, global) {
     (function () {
@@ -10327,6 +10362,251 @@
       exports.SourceMapGenerator = SourceMapGenerator;
     });
   },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/source-map-consumer.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      var util = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js');
+      var binarySearch = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/binary-search.js');
+      var ArraySet = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/array-set.js').ArraySet;
+      var base64VLQ = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64-vlq.js');
+      function SourceMapConsumer(aSourceMap) {
+        var sourceMap = aSourceMap;
+        if (typeof aSourceMap === 'string') {
+          sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+        }
+        var version = util.getArg(sourceMap, 'version');
+        var sources = util.getArg(sourceMap, 'sources');
+        var names = util.getArg(sourceMap, 'names', []);
+        var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
+        var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
+        var mappings = util.getArg(sourceMap, 'mappings');
+        var file = util.getArg(sourceMap, 'file', null);
+        if (version != this._version) {
+          throw new Error('Unsupported version: ' + version);
+        }
+        this._names = ArraySet.fromArray(names, true);
+        this._sources = ArraySet.fromArray(sources, true);
+        this.sourceRoot = sourceRoot;
+        this.sourcesContent = sourcesContent;
+        this._mappings = mappings;
+        this.file = file;
+      }
+      SourceMapConsumer.fromSourceMap = function SourceMapConsumer_fromSourceMap(aSourceMap) {
+        var smc = Object.create(SourceMapConsumer.prototype);
+        smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
+        smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
+        smc.sourceRoot = aSourceMap._sourceRoot;
+        smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(), smc.sourceRoot);
+        smc.file = aSourceMap._file;
+        smc.__generatedMappings = aSourceMap._mappings.slice().sort(util.compareByGeneratedPositions);
+        smc.__originalMappings = aSourceMap._mappings.slice().sort(util.compareByOriginalPositions);
+        return smc;
+      };
+      SourceMapConsumer.prototype._version = 3;
+      Object.defineProperty(SourceMapConsumer.prototype, 'sources', {
+        get: function () {
+          return this._sources.toArray().map(function (s) {
+            return this.sourceRoot ? util.join(this.sourceRoot, s) : s;
+          }, this);
+        }
+      });
+      SourceMapConsumer.prototype.__generatedMappings = null;
+      Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
+        get: function () {
+          if (!this.__generatedMappings) {
+            this.__generatedMappings = [];
+            this.__originalMappings = [];
+            this._parseMappings(this._mappings, this.sourceRoot);
+          }
+          return this.__generatedMappings;
+        }
+      });
+      SourceMapConsumer.prototype.__originalMappings = null;
+      Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
+        get: function () {
+          if (!this.__originalMappings) {
+            this.__generatedMappings = [];
+            this.__originalMappings = [];
+            this._parseMappings(this._mappings, this.sourceRoot);
+          }
+          return this.__originalMappings;
+        }
+      });
+      SourceMapConsumer.prototype._parseMappings = function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
+        var generatedLine = 1;
+        var previousGeneratedColumn = 0;
+        var previousOriginalLine = 0;
+        var previousOriginalColumn = 0;
+        var previousSource = 0;
+        var previousName = 0;
+        var mappingSeparator = /^[,;]/;
+        var str = aStr;
+        var mapping;
+        var temp;
+        while (str.length > 0) {
+          if (str.charAt(0) === ';') {
+            generatedLine++;
+            str = str.slice(1);
+            previousGeneratedColumn = 0;
+          } else if (str.charAt(0) === ',') {
+            str = str.slice(1);
+          } else {
+            mapping = {};
+            mapping.generatedLine = generatedLine;
+            temp = base64VLQ.decode(str);
+            mapping.generatedColumn = previousGeneratedColumn + temp.value;
+            previousGeneratedColumn = mapping.generatedColumn;
+            str = temp.rest;
+            if (str.length > 0 && !mappingSeparator.test(str.charAt(0))) {
+              temp = base64VLQ.decode(str);
+              mapping.source = this._sources.at(previousSource + temp.value);
+              previousSource += temp.value;
+              str = temp.rest;
+              if (str.length === 0 || mappingSeparator.test(str.charAt(0))) {
+                throw new Error('Found a source, but no line and column');
+              }
+              temp = base64VLQ.decode(str);
+              mapping.originalLine = previousOriginalLine + temp.value;
+              previousOriginalLine = mapping.originalLine;
+              mapping.originalLine += 1;
+              str = temp.rest;
+              if (str.length === 0 || mappingSeparator.test(str.charAt(0))) {
+                throw new Error('Found a source and line, but no column');
+              }
+              temp = base64VLQ.decode(str);
+              mapping.originalColumn = previousOriginalColumn + temp.value;
+              previousOriginalColumn = mapping.originalColumn;
+              str = temp.rest;
+              if (str.length > 0 && !mappingSeparator.test(str.charAt(0))) {
+                temp = base64VLQ.decode(str);
+                mapping.name = this._names.at(previousName + temp.value);
+                previousName += temp.value;
+                str = temp.rest;
+              }
+            }
+            this.__generatedMappings.push(mapping);
+            if (typeof mapping.originalLine === 'number') {
+              this.__originalMappings.push(mapping);
+            }
+          }
+        }
+        this.__generatedMappings.sort(util.compareByGeneratedPositions);
+        this.__originalMappings.sort(util.compareByOriginalPositions);
+      };
+      SourceMapConsumer.prototype._findMapping = function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName, aColumnName, aComparator) {
+        if (aNeedle[aLineName] <= 0) {
+          throw new TypeError('Line must be greater than or equal to 1, got ' + aNeedle[aLineName]);
+        }
+        if (aNeedle[aColumnName] < 0) {
+          throw new TypeError('Column must be greater than or equal to 0, got ' + aNeedle[aColumnName]);
+        }
+        return binarySearch.search(aNeedle, aMappings, aComparator);
+      };
+      SourceMapConsumer.prototype.originalPositionFor = function SourceMapConsumer_originalPositionFor(aArgs) {
+        var needle = {
+            generatedLine: util.getArg(aArgs, 'line'),
+            generatedColumn: util.getArg(aArgs, 'column')
+          };
+        var mapping = this._findMapping(needle, this._generatedMappings, 'generatedLine', 'generatedColumn', util.compareByGeneratedPositions);
+        if (mapping && mapping.generatedLine === needle.generatedLine) {
+          var source = util.getArg(mapping, 'source', null);
+          if (source && this.sourceRoot) {
+            source = util.join(this.sourceRoot, source);
+          }
+          return {
+            source: source,
+            line: util.getArg(mapping, 'originalLine', null),
+            column: util.getArg(mapping, 'originalColumn', null),
+            name: util.getArg(mapping, 'name', null)
+          };
+        }
+        return {
+          source: null,
+          line: null,
+          column: null,
+          name: null
+        };
+      };
+      SourceMapConsumer.prototype.sourceContentFor = function SourceMapConsumer_sourceContentFor(aSource) {
+        if (!this.sourcesContent) {
+          return null;
+        }
+        if (this.sourceRoot) {
+          aSource = util.relative(this.sourceRoot, aSource);
+        }
+        if (this._sources.has(aSource)) {
+          return this.sourcesContent[this._sources.indexOf(aSource)];
+        }
+        var url;
+        if (this.sourceRoot && (url = util.urlParse(this.sourceRoot))) {
+          var fileUriAbsPath = aSource.replace(/^file:\/\//, '');
+          if (url.scheme == 'file' && this._sources.has(fileUriAbsPath)) {
+            return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)];
+          }
+          if ((!url.path || url.path == '/') && this._sources.has('/' + aSource)) {
+            return this.sourcesContent[this._sources.indexOf('/' + aSource)];
+          }
+        }
+        throw new Error('"' + aSource + '" is not in the SourceMap.');
+      };
+      SourceMapConsumer.prototype.generatedPositionFor = function SourceMapConsumer_generatedPositionFor(aArgs) {
+        var needle = {
+            source: util.getArg(aArgs, 'source'),
+            originalLine: util.getArg(aArgs, 'line'),
+            originalColumn: util.getArg(aArgs, 'column')
+          };
+        if (this.sourceRoot) {
+          needle.source = util.relative(this.sourceRoot, needle.source);
+        }
+        var mapping = this._findMapping(needle, this._originalMappings, 'originalLine', 'originalColumn', util.compareByOriginalPositions);
+        if (mapping) {
+          return {
+            line: util.getArg(mapping, 'generatedLine', null),
+            column: util.getArg(mapping, 'generatedColumn', null)
+          };
+        }
+        return {
+          line: null,
+          column: null
+        };
+      };
+      SourceMapConsumer.GENERATED_ORDER = 1;
+      SourceMapConsumer.ORIGINAL_ORDER = 2;
+      SourceMapConsumer.prototype.eachMapping = function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
+        var context = aContext || null;
+        var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
+        var mappings;
+        switch (order) {
+        case SourceMapConsumer.GENERATED_ORDER:
+          mappings = this._generatedMappings;
+          break;
+        case SourceMapConsumer.ORIGINAL_ORDER:
+          mappings = this._originalMappings;
+          break;
+        default:
+          throw new Error('Unknown order of iteration.');
+        }
+        var sourceRoot = this.sourceRoot;
+        mappings.map(function (mapping) {
+          var source = mapping.source;
+          if (source && sourceRoot) {
+            source = util.join(sourceRoot, source);
+          }
+          return {
+            source: source,
+            generatedLine: mapping.generatedLine,
+            generatedColumn: mapping.generatedColumn,
+            originalLine: mapping.originalLine,
+            originalColumn: mapping.originalColumn,
+            name: mapping.name
+          };
+        }).forEach(aCallback, context);
+      };
+      exports.SourceMapConsumer = SourceMapConsumer;
+    });
+  },
   '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/source-node.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
       var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
@@ -10574,250 +10854,35 @@
       exports.SourceNode = SourceNode;
     });
   },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/source-map-consumer.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
+    function hasOwn(obj, prop) {
+      return Object.prototype.hasOwnProperty.call(obj, prop);
     }
-    define(function (require, exports, module) {
-      var util = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js');
-      var binarySearch = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/binary-search.js');
-      var ArraySet = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/array-set.js').ArraySet;
-      var base64VLQ = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64-vlq.js');
-      function SourceMapConsumer(aSourceMap) {
-        var sourceMap = aSourceMap;
-        if (typeof aSourceMap === 'string') {
-          sourceMap = JSON.parse(aSourceMap.replace(/^\)\]\}'/, ''));
+    module.exports = hasOwn;
+  },
+  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
+    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
+    function mixIn(target, objects) {
+      var i = 0, n = arguments.length, obj;
+      while (++i < n) {
+        obj = arguments[i];
+        if (obj != null) {
+          forOwn(obj, copyProp, target);
         }
-        var version = util.getArg(sourceMap, 'version');
-        var sources = util.getArg(sourceMap, 'sources');
-        var names = util.getArg(sourceMap, 'names', []);
-        var sourceRoot = util.getArg(sourceMap, 'sourceRoot', null);
-        var sourcesContent = util.getArg(sourceMap, 'sourcesContent', null);
-        var mappings = util.getArg(sourceMap, 'mappings');
-        var file = util.getArg(sourceMap, 'file', null);
-        if (version != this._version) {
-          throw new Error('Unsupported version: ' + version);
-        }
-        this._names = ArraySet.fromArray(names, true);
-        this._sources = ArraySet.fromArray(sources, true);
-        this.sourceRoot = sourceRoot;
-        this.sourcesContent = sourcesContent;
-        this._mappings = mappings;
-        this.file = file;
       }
-      SourceMapConsumer.fromSourceMap = function SourceMapConsumer_fromSourceMap(aSourceMap) {
-        var smc = Object.create(SourceMapConsumer.prototype);
-        smc._names = ArraySet.fromArray(aSourceMap._names.toArray(), true);
-        smc._sources = ArraySet.fromArray(aSourceMap._sources.toArray(), true);
-        smc.sourceRoot = aSourceMap._sourceRoot;
-        smc.sourcesContent = aSourceMap._generateSourcesContent(smc._sources.toArray(), smc.sourceRoot);
-        smc.file = aSourceMap._file;
-        smc.__generatedMappings = aSourceMap._mappings.slice().sort(util.compareByGeneratedPositions);
-        smc.__originalMappings = aSourceMap._mappings.slice().sort(util.compareByOriginalPositions);
-        return smc;
-      };
-      SourceMapConsumer.prototype._version = 3;
-      Object.defineProperty(SourceMapConsumer.prototype, 'sources', {
-        get: function () {
-          return this._sources.toArray().map(function (s) {
-            return this.sourceRoot ? util.join(this.sourceRoot, s) : s;
-          }, this);
-        }
-      });
-      SourceMapConsumer.prototype.__generatedMappings = null;
-      Object.defineProperty(SourceMapConsumer.prototype, '_generatedMappings', {
-        get: function () {
-          if (!this.__generatedMappings) {
-            this.__generatedMappings = [];
-            this.__originalMappings = [];
-            this._parseMappings(this._mappings, this.sourceRoot);
-          }
-          return this.__generatedMappings;
-        }
-      });
-      SourceMapConsumer.prototype.__originalMappings = null;
-      Object.defineProperty(SourceMapConsumer.prototype, '_originalMappings', {
-        get: function () {
-          if (!this.__originalMappings) {
-            this.__generatedMappings = [];
-            this.__originalMappings = [];
-            this._parseMappings(this._mappings, this.sourceRoot);
-          }
-          return this.__originalMappings;
-        }
-      });
-      SourceMapConsumer.prototype._parseMappings = function SourceMapConsumer_parseMappings(aStr, aSourceRoot) {
-        var generatedLine = 1;
-        var previousGeneratedColumn = 0;
-        var previousOriginalLine = 0;
-        var previousOriginalColumn = 0;
-        var previousSource = 0;
-        var previousName = 0;
-        var mappingSeparator = /^[,;]/;
-        var str = aStr;
-        var mapping;
-        var temp;
-        while (str.length > 0) {
-          if (str.charAt(0) === ';') {
-            generatedLine++;
-            str = str.slice(1);
-            previousGeneratedColumn = 0;
-          } else if (str.charAt(0) === ',') {
-            str = str.slice(1);
-          } else {
-            mapping = {};
-            mapping.generatedLine = generatedLine;
-            temp = base64VLQ.decode(str);
-            mapping.generatedColumn = previousGeneratedColumn + temp.value;
-            previousGeneratedColumn = mapping.generatedColumn;
-            str = temp.rest;
-            if (str.length > 0 && !mappingSeparator.test(str.charAt(0))) {
-              temp = base64VLQ.decode(str);
-              mapping.source = this._sources.at(previousSource + temp.value);
-              previousSource += temp.value;
-              str = temp.rest;
-              if (str.length === 0 || mappingSeparator.test(str.charAt(0))) {
-                throw new Error('Found a source, but no line and column');
-              }
-              temp = base64VLQ.decode(str);
-              mapping.originalLine = previousOriginalLine + temp.value;
-              previousOriginalLine = mapping.originalLine;
-              mapping.originalLine += 1;
-              str = temp.rest;
-              if (str.length === 0 || mappingSeparator.test(str.charAt(0))) {
-                throw new Error('Found a source and line, but no column');
-              }
-              temp = base64VLQ.decode(str);
-              mapping.originalColumn = previousOriginalColumn + temp.value;
-              previousOriginalColumn = mapping.originalColumn;
-              str = temp.rest;
-              if (str.length > 0 && !mappingSeparator.test(str.charAt(0))) {
-                temp = base64VLQ.decode(str);
-                mapping.name = this._names.at(previousName + temp.value);
-                previousName += temp.value;
-                str = temp.rest;
-              }
-            }
-            this.__generatedMappings.push(mapping);
-            if (typeof mapping.originalLine === 'number') {
-              this.__originalMappings.push(mapping);
-            }
-          }
-        }
-        this.__generatedMappings.sort(util.compareByGeneratedPositions);
-        this.__originalMappings.sort(util.compareByOriginalPositions);
-      };
-      SourceMapConsumer.prototype._findMapping = function SourceMapConsumer_findMapping(aNeedle, aMappings, aLineName, aColumnName, aComparator) {
-        if (aNeedle[aLineName] <= 0) {
-          throw new TypeError('Line must be greater than or equal to 1, got ' + aNeedle[aLineName]);
-        }
-        if (aNeedle[aColumnName] < 0) {
-          throw new TypeError('Column must be greater than or equal to 0, got ' + aNeedle[aColumnName]);
-        }
-        return binarySearch.search(aNeedle, aMappings, aComparator);
-      };
-      SourceMapConsumer.prototype.originalPositionFor = function SourceMapConsumer_originalPositionFor(aArgs) {
-        var needle = {
-            generatedLine: util.getArg(aArgs, 'line'),
-            generatedColumn: util.getArg(aArgs, 'column')
-          };
-        var mapping = this._findMapping(needle, this._generatedMappings, 'generatedLine', 'generatedColumn', util.compareByGeneratedPositions);
-        if (mapping && mapping.generatedLine === needle.generatedLine) {
-          var source = util.getArg(mapping, 'source', null);
-          if (source && this.sourceRoot) {
-            source = util.join(this.sourceRoot, source);
-          }
-          return {
-            source: source,
-            line: util.getArg(mapping, 'originalLine', null),
-            column: util.getArg(mapping, 'originalColumn', null),
-            name: util.getArg(mapping, 'name', null)
-          };
-        }
-        return {
-          source: null,
-          line: null,
-          column: null,
-          name: null
-        };
-      };
-      SourceMapConsumer.prototype.sourceContentFor = function SourceMapConsumer_sourceContentFor(aSource) {
-        if (!this.sourcesContent) {
-          return null;
-        }
-        if (this.sourceRoot) {
-          aSource = util.relative(this.sourceRoot, aSource);
-        }
-        if (this._sources.has(aSource)) {
-          return this.sourcesContent[this._sources.indexOf(aSource)];
-        }
-        var url;
-        if (this.sourceRoot && (url = util.urlParse(this.sourceRoot))) {
-          var fileUriAbsPath = aSource.replace(/^file:\/\//, '');
-          if (url.scheme == 'file' && this._sources.has(fileUriAbsPath)) {
-            return this.sourcesContent[this._sources.indexOf(fileUriAbsPath)];
-          }
-          if ((!url.path || url.path == '/') && this._sources.has('/' + aSource)) {
-            return this.sourcesContent[this._sources.indexOf('/' + aSource)];
-          }
-        }
-        throw new Error('"' + aSource + '" is not in the SourceMap.');
-      };
-      SourceMapConsumer.prototype.generatedPositionFor = function SourceMapConsumer_generatedPositionFor(aArgs) {
-        var needle = {
-            source: util.getArg(aArgs, 'source'),
-            originalLine: util.getArg(aArgs, 'line'),
-            originalColumn: util.getArg(aArgs, 'column')
-          };
-        if (this.sourceRoot) {
-          needle.source = util.relative(this.sourceRoot, needle.source);
-        }
-        var mapping = this._findMapping(needle, this._originalMappings, 'originalLine', 'originalColumn', util.compareByOriginalPositions);
-        if (mapping) {
-          return {
-            line: util.getArg(mapping, 'generatedLine', null),
-            column: util.getArg(mapping, 'generatedColumn', null)
-          };
-        }
-        return {
-          line: null,
-          column: null
-        };
-      };
-      SourceMapConsumer.GENERATED_ORDER = 1;
-      SourceMapConsumer.ORIGINAL_ORDER = 2;
-      SourceMapConsumer.prototype.eachMapping = function SourceMapConsumer_eachMapping(aCallback, aContext, aOrder) {
-        var context = aContext || null;
-        var order = aOrder || SourceMapConsumer.GENERATED_ORDER;
-        var mappings;
-        switch (order) {
-        case SourceMapConsumer.GENERATED_ORDER:
-          mappings = this._generatedMappings;
-          break;
-        case SourceMapConsumer.ORIGINAL_ORDER:
-          mappings = this._originalMappings;
-          break;
-        default:
-          throw new Error('Unknown order of iteration.');
-        }
-        var sourceRoot = this.sourceRoot;
-        mappings.map(function (mapping) {
-          var source = mapping.source;
-          if (source && sourceRoot) {
-            source = util.join(sourceRoot, source);
-          }
-          return {
-            source: source,
-            generatedLine: mapping.generatedLine,
-            generatedColumn: mapping.generatedColumn,
-            originalLine: mapping.originalLine,
-            originalColumn: mapping.originalColumn,
-            name: mapping.name
-          };
-        }).forEach(aCallback, context);
-      };
-      exports.SourceMapConsumer = SourceMapConsumer;
-    });
+      return target;
+    }
+    function copyProp(val, key) {
+      this[key] = val;
+    }
+    module.exports = mixIn;
+  },
+  '../../../node_modules/mout/lang/isKind.js': function (require, module, exports, global) {
+    var kindOf = require('../../../node_modules/mout/lang/kindOf.js');
+    function isKind(val, kind) {
+      return kindOf(val) === kind;
+    }
+    module.exports = isKind;
   },
   '../../../node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
     var identity = require('../../../node_modules/mout/function/identity.js');
@@ -11057,6 +11122,329 @@
       return cache[expression] || (cache[expression] = new Expressions(expression));
     };
     module.exports = parse;
+  },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      var base64 = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64.js');
+      var VLQ_BASE_SHIFT = 5;
+      var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
+      var VLQ_BASE_MASK = VLQ_BASE - 1;
+      var VLQ_CONTINUATION_BIT = VLQ_BASE;
+      function toVLQSigned(aValue) {
+        return aValue < 0 ? (-aValue << 1) + 1 : (aValue << 1) + 0;
+      }
+      function fromVLQSigned(aValue) {
+        var isNegative = (aValue & 1) === 1;
+        var shifted = aValue >> 1;
+        return isNegative ? -shifted : shifted;
+      }
+      exports.encode = function base64VLQ_encode(aValue) {
+        var encoded = '';
+        var digit;
+        var vlq = toVLQSigned(aValue);
+        do {
+          digit = vlq & VLQ_BASE_MASK;
+          vlq >>>= VLQ_BASE_SHIFT;
+          if (vlq > 0) {
+            digit |= VLQ_CONTINUATION_BIT;
+          }
+          encoded += base64.encode(digit);
+        } while (vlq > 0);
+        return encoded;
+      };
+      exports.decode = function base64VLQ_decode(aStr) {
+        var i = 0;
+        var strLen = aStr.length;
+        var result = 0;
+        var shift = 0;
+        var continuation, digit;
+        do {
+          if (i >= strLen) {
+            throw new Error('Expected more digits in base 64 VLQ value.');
+          }
+          digit = base64.decode(aStr.charAt(i++));
+          continuation = !!(digit & VLQ_CONTINUATION_BIT);
+          digit &= VLQ_BASE_MASK;
+          result = result + (digit << shift);
+          shift += VLQ_BASE_SHIFT;
+        } while (continuation);
+        return {
+          value: fromVLQSigned(result),
+          rest: aStr.slice(i)
+        };
+      };
+    });
+  },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      function getArg(aArgs, aName, aDefaultValue) {
+        if (aName in aArgs) {
+          return aArgs[aName];
+        } else if (arguments.length === 3) {
+          return aDefaultValue;
+        } else {
+          throw new Error('"' + aName + '" is a required argument.');
+        }
+      }
+      exports.getArg = getArg;
+      var urlRegexp = /^(?:([\w+\-.]+):)?\/\/(?:(\w+:\w+)@)?([\w.]*)(?::(\d+))?(\S*)$/;
+      var dataUrlRegexp = /^data:.+\,.+$/;
+      function urlParse(aUrl) {
+        var match = aUrl.match(urlRegexp);
+        if (!match) {
+          return null;
+        }
+        return {
+          scheme: match[1],
+          auth: match[2],
+          host: match[3],
+          port: match[4],
+          path: match[5]
+        };
+      }
+      exports.urlParse = urlParse;
+      function urlGenerate(aParsedUrl) {
+        var url = '';
+        if (aParsedUrl.scheme) {
+          url += aParsedUrl.scheme + ':';
+        }
+        url += '//';
+        if (aParsedUrl.auth) {
+          url += aParsedUrl.auth + '@';
+        }
+        if (aParsedUrl.host) {
+          url += aParsedUrl.host;
+        }
+        if (aParsedUrl.port) {
+          url += ':' + aParsedUrl.port;
+        }
+        if (aParsedUrl.path) {
+          url += aParsedUrl.path;
+        }
+        return url;
+      }
+      exports.urlGenerate = urlGenerate;
+      function normalize(aPath) {
+        var path = aPath;
+        var url = urlParse(aPath);
+        if (url) {
+          if (!url.path) {
+            return aPath;
+          }
+          path = url.path;
+        }
+        var isAbsolute = path.charAt(0) === '/';
+        var parts = path.split(/\/+/);
+        for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
+          part = parts[i];
+          if (part === '.') {
+            parts.splice(i, 1);
+          } else if (part === '..') {
+            up++;
+          } else if (up > 0) {
+            if (part === '') {
+              parts.splice(i + 1, up);
+              up = 0;
+            } else {
+              parts.splice(i, 2);
+              up--;
+            }
+          }
+        }
+        path = parts.join('/');
+        if (path === '') {
+          path = isAbsolute ? '/' : '.';
+        }
+        if (url) {
+          url.path = path;
+          return urlGenerate(url);
+        }
+        return path;
+      }
+      exports.normalize = normalize;
+      function join(aRoot, aPath) {
+        var aPathUrl = urlParse(aPath);
+        var aRootUrl = urlParse(aRoot);
+        if (aRootUrl) {
+          aRoot = aRootUrl.path || '/';
+        }
+        if (aPathUrl && !aPathUrl.scheme) {
+          if (aRootUrl) {
+            aPathUrl.scheme = aRootUrl.scheme;
+          }
+          return urlGenerate(aPathUrl);
+        }
+        if (aPathUrl || aPath.match(dataUrlRegexp)) {
+          return aPath;
+        }
+        if (aRootUrl && !aRootUrl.host && !aRootUrl.path) {
+          aRootUrl.host = aPath;
+          return urlGenerate(aRootUrl);
+        }
+        var joined = aPath.charAt(0) === '/' ? aPath : normalize(aRoot.replace(/\/+$/, '') + '/' + aPath);
+        if (aRootUrl) {
+          aRootUrl.path = joined;
+          return urlGenerate(aRootUrl);
+        }
+        return joined;
+      }
+      exports.join = join;
+      function toSetString(aStr) {
+        return '$' + aStr;
+      }
+      exports.toSetString = toSetString;
+      function fromSetString(aStr) {
+        return aStr.substr(1);
+      }
+      exports.fromSetString = fromSetString;
+      function relative(aRoot, aPath) {
+        aRoot = aRoot.replace(/\/$/, '');
+        var url = urlParse(aRoot);
+        if (aPath.charAt(0) == '/' && url && url.path == '/') {
+          return aPath.slice(1);
+        }
+        return aPath.indexOf(aRoot + '/') === 0 ? aPath.substr(aRoot.length + 1) : aPath;
+      }
+      exports.relative = relative;
+      function strcmp(aStr1, aStr2) {
+        var s1 = aStr1 || '';
+        var s2 = aStr2 || '';
+        return (s1 > s2) - (s1 < s2);
+      }
+      function compareByOriginalPositions(mappingA, mappingB, onlyCompareOriginal) {
+        var cmp;
+        cmp = strcmp(mappingA.source, mappingB.source);
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.originalLine - mappingB.originalLine;
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.originalColumn - mappingB.originalColumn;
+        if (cmp || onlyCompareOriginal) {
+          return cmp;
+        }
+        cmp = strcmp(mappingA.name, mappingB.name);
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.generatedLine - mappingB.generatedLine;
+        if (cmp) {
+          return cmp;
+        }
+        return mappingA.generatedColumn - mappingB.generatedColumn;
+      }
+      ;
+      exports.compareByOriginalPositions = compareByOriginalPositions;
+      function compareByGeneratedPositions(mappingA, mappingB, onlyCompareGenerated) {
+        var cmp;
+        cmp = mappingA.generatedLine - mappingB.generatedLine;
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.generatedColumn - mappingB.generatedColumn;
+        if (cmp || onlyCompareGenerated) {
+          return cmp;
+        }
+        cmp = strcmp(mappingA.source, mappingB.source);
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.originalLine - mappingB.originalLine;
+        if (cmp) {
+          return cmp;
+        }
+        cmp = mappingA.originalColumn - mappingB.originalColumn;
+        if (cmp) {
+          return cmp;
+        }
+        return strcmp(mappingA.name, mappingB.name);
+      }
+      ;
+      exports.compareByGeneratedPositions = compareByGeneratedPositions;
+    });
+  },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/array-set.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      var util = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js');
+      function ArraySet() {
+        this._array = [];
+        this._set = {};
+      }
+      ArraySet.fromArray = function ArraySet_fromArray(aArray, aAllowDuplicates) {
+        var set = new ArraySet();
+        for (var i = 0, len = aArray.length; i < len; i++) {
+          set.add(aArray[i], aAllowDuplicates);
+        }
+        return set;
+      };
+      ArraySet.prototype.add = function ArraySet_add(aStr, aAllowDuplicates) {
+        var isDuplicate = this.has(aStr);
+        var idx = this._array.length;
+        if (!isDuplicate || aAllowDuplicates) {
+          this._array.push(aStr);
+        }
+        if (!isDuplicate) {
+          this._set[util.toSetString(aStr)] = idx;
+        }
+      };
+      ArraySet.prototype.has = function ArraySet_has(aStr) {
+        return Object.prototype.hasOwnProperty.call(this._set, util.toSetString(aStr));
+      };
+      ArraySet.prototype.indexOf = function ArraySet_indexOf(aStr) {
+        if (this.has(aStr)) {
+          return this._set[util.toSetString(aStr)];
+        }
+        throw new Error('"' + aStr + '" is not in the set.');
+      };
+      ArraySet.prototype.at = function ArraySet_at(aIdx) {
+        if (aIdx >= 0 && aIdx < this._array.length) {
+          return this._array[aIdx];
+        }
+        throw new Error('No element indexed by ' + aIdx);
+      };
+      ArraySet.prototype.toArray = function ArraySet_toArray() {
+        return this._array.slice();
+      };
+      exports.ArraySet = ArraySet;
+    });
+  },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
+        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
+        var cmp = aCompare(aNeedle, aHaystack[mid], true);
+        if (cmp === 0) {
+          return aHaystack[mid];
+        } else if (cmp > 0) {
+          if (aHigh - mid > 1) {
+            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
+          }
+          return aHaystack[mid];
+        } else {
+          if (mid - aLow > 1) {
+            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
+          }
+          return aLow < 0 ? null : aHaystack[aLow];
+        }
+      }
+      exports.search = function search(aNeedle, aHaystack, aCompare) {
+        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
+      };
+    });
   },
   '../../../node_modules/slick/finder.js': function (require, module, exports, global) {
     'use strict';
@@ -11682,329 +12070,6 @@
     };
     module.exports = typeOf;
   },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      var base64 = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64.js');
-      var VLQ_BASE_SHIFT = 5;
-      var VLQ_BASE = 1 << VLQ_BASE_SHIFT;
-      var VLQ_BASE_MASK = VLQ_BASE - 1;
-      var VLQ_CONTINUATION_BIT = VLQ_BASE;
-      function toVLQSigned(aValue) {
-        return aValue < 0 ? (-aValue << 1) + 1 : (aValue << 1) + 0;
-      }
-      function fromVLQSigned(aValue) {
-        var isNegative = (aValue & 1) === 1;
-        var shifted = aValue >> 1;
-        return isNegative ? -shifted : shifted;
-      }
-      exports.encode = function base64VLQ_encode(aValue) {
-        var encoded = '';
-        var digit;
-        var vlq = toVLQSigned(aValue);
-        do {
-          digit = vlq & VLQ_BASE_MASK;
-          vlq >>>= VLQ_BASE_SHIFT;
-          if (vlq > 0) {
-            digit |= VLQ_CONTINUATION_BIT;
-          }
-          encoded += base64.encode(digit);
-        } while (vlq > 0);
-        return encoded;
-      };
-      exports.decode = function base64VLQ_decode(aStr) {
-        var i = 0;
-        var strLen = aStr.length;
-        var result = 0;
-        var shift = 0;
-        var continuation, digit;
-        do {
-          if (i >= strLen) {
-            throw new Error('Expected more digits in base 64 VLQ value.');
-          }
-          digit = base64.decode(aStr.charAt(i++));
-          continuation = !!(digit & VLQ_CONTINUATION_BIT);
-          digit &= VLQ_BASE_MASK;
-          result = result + (digit << shift);
-          shift += VLQ_BASE_SHIFT;
-        } while (continuation);
-        return {
-          value: fromVLQSigned(result),
-          rest: aStr.slice(i)
-        };
-      };
-    });
-  },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      function getArg(aArgs, aName, aDefaultValue) {
-        if (aName in aArgs) {
-          return aArgs[aName];
-        } else if (arguments.length === 3) {
-          return aDefaultValue;
-        } else {
-          throw new Error('"' + aName + '" is a required argument.');
-        }
-      }
-      exports.getArg = getArg;
-      var urlRegexp = /^(?:([\w+\-.]+):)?\/\/(?:(\w+:\w+)@)?([\w.]*)(?::(\d+))?(\S*)$/;
-      var dataUrlRegexp = /^data:.+\,.+$/;
-      function urlParse(aUrl) {
-        var match = aUrl.match(urlRegexp);
-        if (!match) {
-          return null;
-        }
-        return {
-          scheme: match[1],
-          auth: match[2],
-          host: match[3],
-          port: match[4],
-          path: match[5]
-        };
-      }
-      exports.urlParse = urlParse;
-      function urlGenerate(aParsedUrl) {
-        var url = '';
-        if (aParsedUrl.scheme) {
-          url += aParsedUrl.scheme + ':';
-        }
-        url += '//';
-        if (aParsedUrl.auth) {
-          url += aParsedUrl.auth + '@';
-        }
-        if (aParsedUrl.host) {
-          url += aParsedUrl.host;
-        }
-        if (aParsedUrl.port) {
-          url += ':' + aParsedUrl.port;
-        }
-        if (aParsedUrl.path) {
-          url += aParsedUrl.path;
-        }
-        return url;
-      }
-      exports.urlGenerate = urlGenerate;
-      function normalize(aPath) {
-        var path = aPath;
-        var url = urlParse(aPath);
-        if (url) {
-          if (!url.path) {
-            return aPath;
-          }
-          path = url.path;
-        }
-        var isAbsolute = path.charAt(0) === '/';
-        var parts = path.split(/\/+/);
-        for (var part, up = 0, i = parts.length - 1; i >= 0; i--) {
-          part = parts[i];
-          if (part === '.') {
-            parts.splice(i, 1);
-          } else if (part === '..') {
-            up++;
-          } else if (up > 0) {
-            if (part === '') {
-              parts.splice(i + 1, up);
-              up = 0;
-            } else {
-              parts.splice(i, 2);
-              up--;
-            }
-          }
-        }
-        path = parts.join('/');
-        if (path === '') {
-          path = isAbsolute ? '/' : '.';
-        }
-        if (url) {
-          url.path = path;
-          return urlGenerate(url);
-        }
-        return path;
-      }
-      exports.normalize = normalize;
-      function join(aRoot, aPath) {
-        var aPathUrl = urlParse(aPath);
-        var aRootUrl = urlParse(aRoot);
-        if (aRootUrl) {
-          aRoot = aRootUrl.path || '/';
-        }
-        if (aPathUrl && !aPathUrl.scheme) {
-          if (aRootUrl) {
-            aPathUrl.scheme = aRootUrl.scheme;
-          }
-          return urlGenerate(aPathUrl);
-        }
-        if (aPathUrl || aPath.match(dataUrlRegexp)) {
-          return aPath;
-        }
-        if (aRootUrl && !aRootUrl.host && !aRootUrl.path) {
-          aRootUrl.host = aPath;
-          return urlGenerate(aRootUrl);
-        }
-        var joined = aPath.charAt(0) === '/' ? aPath : normalize(aRoot.replace(/\/+$/, '') + '/' + aPath);
-        if (aRootUrl) {
-          aRootUrl.path = joined;
-          return urlGenerate(aRootUrl);
-        }
-        return joined;
-      }
-      exports.join = join;
-      function toSetString(aStr) {
-        return '$' + aStr;
-      }
-      exports.toSetString = toSetString;
-      function fromSetString(aStr) {
-        return aStr.substr(1);
-      }
-      exports.fromSetString = fromSetString;
-      function relative(aRoot, aPath) {
-        aRoot = aRoot.replace(/\/$/, '');
-        var url = urlParse(aRoot);
-        if (aPath.charAt(0) == '/' && url && url.path == '/') {
-          return aPath.slice(1);
-        }
-        return aPath.indexOf(aRoot + '/') === 0 ? aPath.substr(aRoot.length + 1) : aPath;
-      }
-      exports.relative = relative;
-      function strcmp(aStr1, aStr2) {
-        var s1 = aStr1 || '';
-        var s2 = aStr2 || '';
-        return (s1 > s2) - (s1 < s2);
-      }
-      function compareByOriginalPositions(mappingA, mappingB, onlyCompareOriginal) {
-        var cmp;
-        cmp = strcmp(mappingA.source, mappingB.source);
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.originalLine - mappingB.originalLine;
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.originalColumn - mappingB.originalColumn;
-        if (cmp || onlyCompareOriginal) {
-          return cmp;
-        }
-        cmp = strcmp(mappingA.name, mappingB.name);
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.generatedLine - mappingB.generatedLine;
-        if (cmp) {
-          return cmp;
-        }
-        return mappingA.generatedColumn - mappingB.generatedColumn;
-      }
-      ;
-      exports.compareByOriginalPositions = compareByOriginalPositions;
-      function compareByGeneratedPositions(mappingA, mappingB, onlyCompareGenerated) {
-        var cmp;
-        cmp = mappingA.generatedLine - mappingB.generatedLine;
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.generatedColumn - mappingB.generatedColumn;
-        if (cmp || onlyCompareGenerated) {
-          return cmp;
-        }
-        cmp = strcmp(mappingA.source, mappingB.source);
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.originalLine - mappingB.originalLine;
-        if (cmp) {
-          return cmp;
-        }
-        cmp = mappingA.originalColumn - mappingB.originalColumn;
-        if (cmp) {
-          return cmp;
-        }
-        return strcmp(mappingA.name, mappingB.name);
-      }
-      ;
-      exports.compareByGeneratedPositions = compareByGeneratedPositions;
-    });
-  },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/array-set.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      var util = require('../../../node_modules/escodegen/node_modules/source-map/lib/source-map/util.js');
-      function ArraySet() {
-        this._array = [];
-        this._set = {};
-      }
-      ArraySet.fromArray = function ArraySet_fromArray(aArray, aAllowDuplicates) {
-        var set = new ArraySet();
-        for (var i = 0, len = aArray.length; i < len; i++) {
-          set.add(aArray[i], aAllowDuplicates);
-        }
-        return set;
-      };
-      ArraySet.prototype.add = function ArraySet_add(aStr, aAllowDuplicates) {
-        var isDuplicate = this.has(aStr);
-        var idx = this._array.length;
-        if (!isDuplicate || aAllowDuplicates) {
-          this._array.push(aStr);
-        }
-        if (!isDuplicate) {
-          this._set[util.toSetString(aStr)] = idx;
-        }
-      };
-      ArraySet.prototype.has = function ArraySet_has(aStr) {
-        return Object.prototype.hasOwnProperty.call(this._set, util.toSetString(aStr));
-      };
-      ArraySet.prototype.indexOf = function ArraySet_indexOf(aStr) {
-        if (this.has(aStr)) {
-          return this._set[util.toSetString(aStr)];
-        }
-        throw new Error('"' + aStr + '" is not in the set.');
-      };
-      ArraySet.prototype.at = function ArraySet_at(aIdx) {
-        if (aIdx >= 0 && aIdx < this._array.length) {
-          return this._array[aIdx];
-        }
-        throw new Error('No element indexed by ' + aIdx);
-      };
-      ArraySet.prototype.toArray = function ArraySet_toArray() {
-        return this._array.slice();
-      };
-      exports.ArraySet = ArraySet;
-    });
-  },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
-        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
-        var cmp = aCompare(aNeedle, aHaystack[mid], true);
-        if (cmp === 0) {
-          return aHaystack[mid];
-        } else if (cmp > 0) {
-          if (aHigh - mid > 1) {
-            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
-          }
-          return aHaystack[mid];
-        } else {
-          if (mid - aLow > 1) {
-            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
-          }
-          return aLow < 0 ? null : aHaystack[aLow];
-        }
-      }
-      exports.search = function search(aNeedle, aHaystack, aCompare) {
-        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
-      };
-    });
-  },
   '../../../node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('../../../node_modules/mout/object/hasOwn.js');
     var forIn = require('../../../node_modules/mout/object/forIn.js');
@@ -12074,6 +12139,31 @@
     }
     module.exports = deepMatches;
   },
+  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      var charToIntMap = {};
+      var intToCharMap = {};
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('').forEach(function (ch, index) {
+        charToIntMap[ch] = index;
+        intToCharMap[index] = ch;
+      });
+      exports.encode = function base64_encode(aNumber) {
+        if (aNumber in intToCharMap) {
+          return intToCharMap[aNumber];
+        }
+        throw new TypeError('Must be between 0 and 63: ' + aNumber);
+      };
+      exports.decode = function base64_decode(aChar) {
+        if (aChar in charToIntMap) {
+          return charToIntMap[aChar];
+        }
+        throw new TypeError('Not a valid base 64 digit: ' + aChar);
+      };
+    });
+  },
   '../../../node_modules/mout/object/forIn.js': function (require, module, exports, global) {
     var hasOwn = require('../../../node_modules/mout/object/hasOwn.js');
     var _hasDontEnumBug, _dontEnums;
@@ -12116,38 +12206,6 @@
       return fn.call(thisObj, obj[key], key, obj);
     }
     module.exports = forIn;
-  },
-  '../../../node_modules/escodegen/node_modules/source-map/lib/source-map/base64.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      var charToIntMap = {};
-      var intToCharMap = {};
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('').forEach(function (ch, index) {
-        charToIntMap[ch] = index;
-        intToCharMap[index] = ch;
-      });
-      exports.encode = function base64_encode(aNumber) {
-        if (aNumber in intToCharMap) {
-          return intToCharMap[aNumber];
-        }
-        throw new TypeError('Must be between 0 and 63: ' + aNumber);
-      };
-      exports.decode = function base64_decode(aChar) {
-        if (aChar in charToIntMap) {
-          return charToIntMap[aChar];
-        }
-        throw new TypeError('Not a valid base 64 digit: ' + aChar);
-      };
-    });
-  },
-  '../../../node_modules/mout/lang/isArray.js': function (require, module, exports, global) {
-    var isKind = require('../../../node_modules/mout/lang/isKind.js');
-    var isArray = Array.isArray || function (val) {
-        return isKind(val, 'Array');
-      };
-    module.exports = isArray;
   },
   '../../../node_modules/escodegen/node_modules/source-map/node_modules/amdefine/amdefine.js': function (require, module, exports, global) {
     var process = require('../../../node_modules/quickstart/browser/process.js');
@@ -12343,6 +12401,13 @@
       return define;
     }
     module.exports = amdefine;
+  },
+  '../../../node_modules/mout/lang/isArray.js': function (require, module, exports, global) {
+    var isKind = require('../../../node_modules/mout/lang/isKind.js');
+    var isArray = Array.isArray || function (val) {
+        return isKind(val, 'Array');
+      };
+    module.exports = isArray;
   }
 }));
 //# sourceMappingURL=./harmonizer-demo-compiled.map
