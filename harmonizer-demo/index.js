@@ -6,13 +6,28 @@ var $ = require('elements');
 var ready = require('elements/domready');
 
 var harmonize = require('harmonizer');
-var library = require('harmonizer/library');
-global.Symbol = library.Symbol;
 
 var esprima = require('esprima');
 var escodegen = require('escodegen');
 
 var tosource = require('tosource');
+
+// implement the minimum indispensible
+
+Object.defineProperty(Array.prototype, '@@iterator', {
+  writable: true,
+  configurable: true,
+  value: function() {
+    var array = this, i = 0;
+    var next = function() {
+      if (i === array.length) return { value: void 0, done: true };
+      return { value: array[i++], done: false };
+    };
+    var it = { next: next };
+    it['@@iterator'] = function() { return it; };
+    return it;
+  }
+});
 
 var generate = function(object) {
 
@@ -124,7 +139,7 @@ ready(function() {
 
       try {
         es5AstObject = harmonize(es6AstObject);
-        es5AstEditor.setValue(inspect(es5AstObject.toJSON()), -1);
+        es5AstEditor.setValue(inspect(es5AstObject), -1);
       } catch (e) { // ast harmonization failed
         harmonizationError = e;
         es5AstObject = false;
