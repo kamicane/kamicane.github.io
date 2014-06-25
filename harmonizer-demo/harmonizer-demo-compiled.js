@@ -30,29 +30,19 @@
     var esprima = require('../../../node_modules/esprima/esprima.js');
     var escodegen = require('../../../node_modules/escodegen/escodegen.js');
     var tosource = require('../../../node_modules/tosource/tosource.js');
-    Object.defineProperty(Array.prototype, '@@iterator', {
-      writable: true,
-      configurable: true,
-      value: function () {
-        var array = this, i = 0;
-        var next = function () {
-          if (i === array.length)
-            return {
-              value: void 0,
-              done: true
-            };
-          return {
-            value: array[i++],
-            done: false
-          };
-        };
-        var it = { next: next };
-        it['@@iterator'] = function () {
-          return it;
-        };
-        return it;
+    var createClass = require('../../../node_modules/es6-util/class/create.js');
+    var iteratorOf = require('../../../node_modules/es6-util/iterator/get.js');
+    var spread = require('../../../node_modules/es6-util/iterator/spread.js');
+    require = function (module) {
+      switch (module) {
+      case 'es6-util/class/create':
+        return createClass;
+      case 'es6-util/iterator/get':
+        return iteratorOf;
+      case 'es6-util/iterator/spread':
+        return spread;
       }
-    });
+    };
     var generate = function (object) {
       return escodegen.generate(object, {
         format: {
@@ -223,12 +213,86 @@
     };
     module.exports = throttle;
   },
+  '../../../node_modules/elements/domready.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('../../../node_modules/elements/events.js');
+    var readystatechange = 'onreadystatechange' in document, shouldPoll = false, loaded = false, readys = [], checks = [], ready = null, timer = null, test = document.createElement('div'), doc = $(document), win = $(window);
+    var domready = function () {
+      if (timer)
+        timer = clearTimeout(timer);
+      if (!loaded) {
+        if (readystatechange)
+          doc.off('readystatechange', check);
+        doc.off('DOMContentLoaded', domready);
+        win.off('load', domready);
+        loaded = true;
+        for (var i = 0; ready = readys[i++];)
+          ready();
+      }
+      return loaded;
+    };
+    var check = function () {
+      for (var i = checks.length; i--;)
+        if (checks[i]())
+          return domready();
+      return false;
+    };
+    var poll = function () {
+      clearTimeout(timer);
+      if (!check())
+        timer = setTimeout(poll, 1000 / 60);
+    };
+    if (document.readyState) {
+      var complete = function () {
+        return !!/loaded|complete/.test(document.readyState);
+      };
+      checks.push(complete);
+      if (!complete()) {
+        if (readystatechange)
+          doc.on('readystatechange', check);
+        else
+          shouldPoll = true;
+      } else {
+        domready();
+      }
+    }
+    if (test.doScroll) {
+      var scrolls = function () {
+        try {
+          test.doScroll();
+          return true;
+        } catch (e) {
+        }
+        return false;
+      };
+      if (!scrolls()) {
+        checks.push(scrolls);
+        shouldPoll = true;
+      }
+    }
+    if (shouldPoll)
+      poll();
+    doc.on('DOMContentLoaded', domready);
+    win.on('load', domready);
+    module.exports = function (ready) {
+      loaded ? ready() : readys.push(ready);
+      return null;
+    };
+  },
+  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('../../../node_modules/elements/base.js');
+    require('../../../node_modules/elements/attributes.js');
+    require('../../../node_modules/elements/events.js');
+    require('../../../node_modules/elements/insertion.js');
+    require('../../../node_modules/elements/traversal.js');
+    require('../../../node_modules/elements/delegation.js');
+    module.exports = $;
+  },
   '../../../node_modules/harmonizer/index.js': function (require, module, exports, global) {
     'use strict';
-    var callExpressionA = require('../../../node_modules/nodes/index.js');
-    var build = callExpressionA.build, nodes = callExpressionA.nodes;
-    var callExpression = require('../../../node_modules/harmonizer/util/iterators.js');
-    var values = callExpression.values;
+    var callExpression = require('../../../node_modules/nodes/index.js');
+    var build = callExpression.build, nodes = callExpression.nodes;
     var deshorthandify = require('../../../node_modules/harmonizer/transform/shorthands.js').default;
     var arrowify = require('../../../node_modules/harmonizer/transform/arrow-functions.js').default;
     var comprehendify = require('../../../node_modules/harmonizer/transform/comprehensions.js').default;
@@ -242,22 +306,17 @@
     var letify = require('../../../node_modules/harmonizer/transform/let-declarations.js').default;
     var modulize = require('../../../node_modules/harmonizer/transform/modules.js').default;
     function blockify(program) {
-      var statementBodies = function () {
-          var comprehension = [];
-          for (var iterator = values([
-                '#IfStatement > alternate',
-                '#IfStatement > consequent',
-                '#ForStatement > body',
-                '#ForInStatement > body',
-                '#ForOfStatement > body',
-                '#WhileStatement > body',
-                '#DoWhileStatement > body'
-              ])['@@iterator'](), step; !(step = iterator.next()).done;) {
-            var selector = step.value;
-            comprehension.push(selector + '[type!=BlockStatement]');
-          }
-          return comprehension;
-        }();
+      var statementBodies = [
+          '#IfStatement > alternate',
+          '#IfStatement > consequent',
+          '#ForStatement > body',
+          '#ForInStatement > body',
+          '#ForOfStatement > body',
+          '#WhileStatement > body',
+          '#DoWhileStatement > body'
+        ].map(function (selector) {
+          return selector + '[type!=BlockStatement]';
+        });
       program.search(statementBodies).forEach(function (statement) {
         var parentNode = statement.parentNode;
         var key = parentNode.indexOf(statement);
@@ -6339,82 +6398,6 @@
       exports.FORMAT_DEFAULTS = FORMAT_DEFAULTS;
     }());
   },
-  '../../../node_modules/elements/domready.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('../../../node_modules/elements/events.js');
-    var readystatechange = 'onreadystatechange' in document, shouldPoll = false, loaded = false, readys = [], checks = [], ready = null, timer = null, test = document.createElement('div'), doc = $(document), win = $(window);
-    var domready = function () {
-      if (timer)
-        timer = clearTimeout(timer);
-      if (!loaded) {
-        if (readystatechange)
-          doc.off('readystatechange', check);
-        doc.off('DOMContentLoaded', domready);
-        win.off('load', domready);
-        loaded = true;
-        for (var i = 0; ready = readys[i++];)
-          ready();
-      }
-      return loaded;
-    };
-    var check = function () {
-      for (var i = checks.length; i--;)
-        if (checks[i]())
-          return domready();
-      return false;
-    };
-    var poll = function () {
-      clearTimeout(timer);
-      if (!check())
-        timer = setTimeout(poll, 1000 / 60);
-    };
-    if (document.readyState) {
-      var complete = function () {
-        return !!/loaded|complete/.test(document.readyState);
-      };
-      checks.push(complete);
-      if (!complete()) {
-        if (readystatechange)
-          doc.on('readystatechange', check);
-        else
-          shouldPoll = true;
-      } else {
-        domready();
-      }
-    }
-    if (test.doScroll) {
-      var scrolls = function () {
-        try {
-          test.doScroll();
-          return true;
-        } catch (e) {
-        }
-        return false;
-      };
-      if (!scrolls()) {
-        checks.push(scrolls);
-        shouldPoll = true;
-      }
-    }
-    if (shouldPoll)
-      poll();
-    doc.on('DOMContentLoaded', domready);
-    win.on('load', domready);
-    module.exports = function (ready) {
-      loaded ? ready() : readys.push(ready);
-      return null;
-    };
-  },
-  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('../../../node_modules/elements/base.js');
-    require('../../../node_modules/elements/attributes.js');
-    require('../../../node_modules/elements/events.js');
-    require('../../../node_modules/elements/insertion.js');
-    require('../../../node_modules/elements/traversal.js');
-    require('../../../node_modules/elements/delegation.js');
-    module.exports = $;
-  },
   '../../../node_modules/tosource/tosource.js': function (require, module, exports, global) {
     module.exports = function (object, filter, indent, startingIndent) {
       var seen = [];
@@ -6458,6 +6441,49 @@
     function legalKey(string) {
       return /^[a-z_$][0-9a-z_$]*$/gi.test(string) && !KEYWORD_REGEXP.test(string);
     }
+  },
+  '../../../node_modules/es6-util/class/create.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpression = require('../../../node_modules/es6-util/class/descriptors.js');
+    var getDescriptors = callExpression.getDescriptors;
+    var create = Object.create, defineProperty = Object.defineProperty, defineProperties = Object.defineProperties;
+    exports.default = function createClass(SuperClass, Class, prototypeMethods, staticMethods) {
+      if (SuperClass) {
+        Class.__proto__ = SuperClass;
+      }
+      defineProperty(Class, 'prototype', { value: create(SuperClass === null ? null : SuperClass.prototype, getDescriptors(prototypeMethods)) });
+      defineProperty(Class.prototype, 'constructor', { value: Class });
+      if (staticMethods) {
+        defineProperties(Class, getDescriptors(staticMethods));
+      }
+      return Class;
+    };
+  },
+  '../../../node_modules/es6-util/iterator/get.js': function (require, module, exports, global) {
+    'use strict';
+    var getIteratorSymbol = require('../../../node_modules/es6-util/iterator/symbol.js').default;
+    var arrayValues = require('../../../node_modules/es6-util/iterator/array/values.js').default;
+    exports.default = function iteratorOf(object) {
+      var iteratorSymbol = getIteratorSymbol();
+      if (iteratorSymbol in object) {
+        return object[iteratorSymbol]();
+      }
+      if (object instanceof Array) {
+        return arrayValues(object);
+      }
+      throw new TypeError('object is not iterable');
+    };
+  },
+  '../../../node_modules/es6-util/iterator/spread.js': function (require, module, exports, global) {
+    'use strict';
+    var iteratorOf = require('../../../node_modules/es6-util/iterator/get.js').default;
+    exports.default = function spread(object) {
+      var iterator = iteratorOf(object), array = [], step;
+      while (!(step = iterator.next()).done) {
+        array.push(step.value);
+      }
+      return array;
+    };
   },
   '../../../node_modules/elements/events.js': function (require, module, exports, global) {
     'use strict';
@@ -6976,111 +7002,6 @@
     });
     module.exports = $;
   },
-  '../../../node_modules/harmonizer/util/iterators.js': function (require, module, exports, global) {
-    'use strict';
-    var iterator = function (next) {
-      var it = { next: next };
-      it['@@iterator'] = function () {
-        return it;
-      };
-      return it;
-    };
-    exports.iterator = iterator;
-    var arrayValuesNext = function (array) {
-      var i = 0;
-      return function () {
-        return i === array.length ? {
-          value: void 0,
-          done: true
-        } : {
-          value: array[i++],
-          done: false
-        };
-      };
-    };
-    var arrayKeysNext = function (array) {
-      var i = 0;
-      return function () {
-        return i === array.length ? {
-          value: void 0,
-          done: true
-        } : {
-          value: i++,
-          done: false
-        };
-      };
-    };
-    var arrayEntriesNext = function (array) {
-      var i = 0;
-      return function () {
-        return i === array.length ? {
-          value: void 0,
-          done: true
-        } : {
-          value: [
-            i,
-            array[i++]
-          ],
-          done: false
-        };
-      };
-    };
-    var objectValuesNext = function (object) {
-      var keys = Object.keys(object), i = 0;
-      return function () {
-        return i === keys.length ? {
-          value: void 0,
-          done: true
-        } : {
-          value: object[keys[i++]],
-          done: false
-        };
-      };
-    };
-    var objectKeysNext = function (object) {
-      var keys = Object.keys(object), i = 0;
-      return function () {
-        return i === keys.length ? {
-          value: void 0,
-          done: true
-        } : {
-          value: keys[i++],
-          done: false
-        };
-      };
-    };
-    var objectEntriesNext = function (object) {
-      var keys = Object.keys(object), i = 0;
-      return function () {
-        if (i === keys.length) {
-          return {
-            value: void 0,
-            done: true
-          };
-        }
-        var key = keys[i++], value = object[key];
-        return {
-          value: [
-            key,
-            value
-          ],
-          done: false
-        };
-      };
-    };
-    var values = function values(object) {
-      return iterator(object instanceof Array ? arrayValuesNext(object) : objectValuesNext(object));
-    };
-    exports.values = values;
-    var keys = function keys(object) {
-      return iterator(object instanceof Array ? arrayKeysNext(object) : objectKeysNext(object));
-    };
-    exports.keys = keys;
-    var entries = function entries(object) {
-      return iterator(object instanceof Array ? arrayEntriesNext(object) : objectEntriesNext(object));
-    };
-    exports.entries = entries;
-  },
   '../../../node_modules/harmonizer/transform/shorthands.js': function (require, module, exports, global) {
     'use strict';
     exports.default = function deshorthandify(program) {
@@ -7092,12 +7013,10 @@
   },
   '../../../node_modules/harmonizer/transform/arrow-functions.js': function (require, module, exports, global) {
     'use strict';
-    var callExpressionB = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpressionB.nodes, syntax = callExpressionB.syntax;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/self.js');
-    var getSelfId = callExpressionA.getSelfId;
-    var callExpression = require('../../../node_modules/harmonizer/util/arguments.js');
-    var getArgumentsId = callExpression.getArgumentsId;
+    var callExpressionA = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpressionA.nodes, syntax = callExpressionA.syntax;
+    var callExpression = require('../../../node_modules/harmonizer/util/id.js');
+    var createUniqueDeclaration = callExpression.createUniqueDeclaration;
     exports.default = function arrowify(program) {
       var q = [
           '#ArrowFunctionExpression => #ThisExpression',
@@ -7108,11 +7027,11 @@
         var arrowScope = arrowFunction.scope('[type!=ArrowFunctionExpression]');
         var id;
         if (expression.type === syntax.ThisExpression) {
-          id = getSelfId(arrowScope);
+          id = createUniqueDeclaration(arrowScope, 'self', 'this');
         } else {
-          id = getArgumentsId(arrowScope);
+          id = createUniqueDeclaration(arrowScope, 'parameters', 'arguments');
         }
-        expression.parentNode.replaceChild(expression, id.clone());
+        expression.parentNode.replaceChild(expression, id);
       });
       program.search('#ArrowFunctionExpression').forEach(function (node) {
         var shallow = new nodes.FunctionExpression(node);
@@ -7124,8 +7043,8 @@
     'use strict';
     var callExpressionC = require('../../../node_modules/nodes/index.js');
     var nodes = callExpressionC.nodes;
-    var callExpressionB = require('../../../node_modules/harmonizer/util/self.js');
-    var getSelfId = callExpressionB.getSelfId;
+    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
+    var createUniqueDeclaration = callExpressionB.createUniqueDeclaration;
     var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
     var express = callExpressionA.express;
     var callExpression = require('../../../node_modules/harmonizer/util/id.js');
@@ -7178,8 +7097,12 @@
           id.name = comprehensionName;
         });
         body.search('=> #ThisExpression').forEach(function (node) {
-          var selfId = getSelfId(wrapper.scope());
-          node.parentNode.replaceChild(node, selfId.clone());
+          var selfId = createUniqueDeclaration(wrapper.scope(), 'self', 'this');
+          node.parentNode.replaceChild(node, selfId);
+        });
+        body.search('=> #Identifier:reference[name=arguments]').forEach(function (node) {
+          var argumentsId = createUniqueDeclaration(wrapper.scope(), 'parameters', 'arguments');
+          node.parentNode.replaceChild(node, argumentsId);
         });
       });
     };
@@ -7189,7 +7112,7 @@
     var callExpressionB = require('../../../node_modules/nodes/index.js');
     var nodes = callExpressionB.nodes, syntax = callExpressionB.syntax;
     var callExpressionA = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueId = callExpressionA.getUniqueId;
+    var getUniqueId = callExpressionA.getUniqueId, createUniqueDeclaration = callExpressionA.createUniqueDeclaration;
     var callExpression = require('../../../node_modules/harmonizer/util/string.js');
     var express = callExpression.express;
     exports.default = function forofify(program) {
@@ -7199,13 +7122,9 @@
         var iteratorId = getUniqueId(node.scope(), 'iterator');
         var stepId = getUniqueId(node.scope(), 'step');
         forStatement.body = node.body;
-        var init = new nodes.CallExpression({
-            callee: new nodes.MemberExpression({
-              computed: true,
-              object: node.right,
-              property: new nodes.Literal({ value: '@@iterator' })
-            })
-          });
+        var iteratorOfId = createUniqueDeclaration(program, 'iteratorOf', 'require("es6-util/iterator/get").default');
+        var init = express(iteratorOfId.name + '()').expression;
+        init.arguments.push(node.right);
         forStatement.init = new nodes.VariableDeclaration({
           declarations: [
             new nodes.VariableDeclarator({
@@ -7428,20 +7347,16 @@
   },
   '../../../node_modules/harmonizer/transform/classes.js': function (require, module, exports, global) {
     'use strict';
-    var callExpressionG = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpressionG.nodes, syntax = callExpressionG.syntax;
-    var callExpressionF = require('../../../node_modules/harmonizer/transform/spread.js');
-    var applyContext = callExpressionF.applyContext;
-    var callExpressionE = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfter = callExpressionE.insertAfter;
-    var callExpressionD = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionD.express, upper = callExpressionD.upper;
-    var callExpressionC = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueId = callExpressionC.getUniqueId;
-    var callExpressionB = require('../../../node_modules/harmonizer/util/extend.js');
-    var getExtendId = callExpressionB.getExtendId;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/self.js');
-    var getSelfId = callExpressionA.getSelfId;
+    var callExpressionE = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpressionE.nodes, syntax = callExpressionE.syntax;
+    var callExpressionD = require('../../../node_modules/harmonizer/transform/spread.js');
+    var applyContext = callExpressionD.applyContext;
+    var callExpressionC = require('../../../node_modules/harmonizer/util/insertion.js');
+    var insertAfter = callExpressionC.insertAfter;
+    var callExpressionB = require('../../../node_modules/harmonizer/util/string.js');
+    var express = callExpressionB.express, upper = callExpressionB.upper;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/id.js');
+    var getUniqueId = callExpressionA.getUniqueId, createUniqueDeclaration = callExpressionA.createUniqueDeclaration;
     exports.default = function classify(program) {
       program.search('#Class').forEach(function (node) {
         var definitions = node.body.body;
@@ -7454,7 +7369,7 @@
         var name = node.id.name;
         var getPrototypeOfNamePrototype = 'Object.getPrototypeOf(' + name + '.prototype)';
         var getPrototypeOfName = 'Object.getPrototypeOf(' + name + ')';
-        var extendId = getExtendId(program).clone();
+        var createClassId = createUniqueDeclaration(program, 'createClass', 'require("es6-util/class/create").default');
         var superClass = node.superClass;
         var constructorMethod = !!definitions.search('> #MethodDefinition > key[name=constructor]').length;
         if (!constructorMethod) {
@@ -7481,7 +7396,7 @@
           var superMethodXp = definition.static ? express(getPrototypeOfName + '.' + methodName).expression : express(getPrototypeOfNamePrototype + '.' + methodName).expression;
           var selfId;
           var definitionFunction = definition.value;
-          selfId = id.scope() !== definitionFunction ? getSelfId(definitionFunction).clone() : new nodes.ThisExpression();
+          selfId = id.scope() !== definitionFunction ? createUniqueDeclaration(definitionFunction, 'self', 'this') : new nodes.ThisExpression();
           callExpression.callee = superMethodXp;
           applyContext(callExpression, selfId);
         });
@@ -7501,13 +7416,13 @@
             kind: definition.kind || 'init'
           }));
         });
-        var extendExpression = express(extendId.name + '()');
-        var args = extendExpression.expression.arguments;
+        var createClassExpression = express(createClassId.name + '()');
+        var args = createClassExpression.expression.arguments;
         if (node.type === syntax.ClassExpression) {
           var wrapper = express('(function(){})()').expression;
           wrapper.arguments.push(superClass);
           var body = wrapper.callee.body.body;
-          var returnStatement = new nodes.ReturnStatement({ argument: extendExpression.expression });
+          var returnStatement = new nodes.ReturnStatement({ argument: createClassExpression.expression });
           body.push(constructorFunction);
           body.push(returnStatement);
           node.parentNode.replaceChild(node, wrapper);
@@ -7515,7 +7430,7 @@
           wrapper.callee.params.push(superClass.clone());
         } else {
           node.parentNode.replaceChild(node, constructorFunction);
-          insertAfter(constructorFunction, extendExpression);
+          insertAfter(constructorFunction, createClassExpression);
         }
         args.push(superClass, constructorFunction.id.clone(), prototype);
         if (members.properties.length) {
@@ -7526,15 +7441,15 @@
   },
   '../../../node_modules/harmonizer/transform/rest-param.js': function (require, module, exports, global) {
     'use strict';
-    var callExpressionA = require('../../../node_modules/harmonizer/util/slice.js');
-    var getSliceId = callExpressionA.getSliceId;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/id.js');
+    var createUniqueDeclaration = callExpressionA.createUniqueDeclaration;
     var callExpression = require('../../../node_modules/harmonizer/util/string.js');
     var express = callExpression.express;
     exports.default = function restify(program) {
       program.search('#Function[rest!=null]').forEach(function (node) {
         var block = node.body.body;
         var length = node.params.length;
-        var sliceId = getSliceId(program).clone();
+        var sliceId = createUniqueDeclaration(program, 'slice', 'Array.prototype.slice');
         var declaration = express('var ' + node.rest.name + ' = ' + sliceId.name + '.call(arguments, ' + length + ')');
         node.rest = null;
         block.unshift(declaration);
@@ -7543,40 +7458,43 @@
   },
   '../../../node_modules/harmonizer/transform/spread.js': function (require, module, exports, global) {
     'use strict';
-    var spreadA = function () {
-      var array = [], last = arguments.length - 1;
-      for (var i = 0; i < last; i++)
-        array.push(arguments[i]);
-      var iterator = arguments[last]['@@iterator'](), step;
-      while (!(step = iterator.next()).done)
-        array.push(step.value);
-      return array;
+    var callExpressionB = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpressionB.nodes, syntax = callExpressionB.syntax;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
+    var express = callExpressionA.express, lower = callExpressionA.lower;
+    var callExpression = require('../../../node_modules/harmonizer/util/id.js');
+    var getUniqueId = callExpression.getUniqueId, createUniqueDeclaration = callExpression.createUniqueDeclaration;
+    var spreadList = function (node, list) {
+      var spreadId = createUniqueDeclaration(node.root, 'spread', 'require("es6-util/iterator/spread").default');
+      list.forEachRight(function (arg, i) {
+        var isSpread = arg.type === syntax.SpreadElement;
+        if (isSpread) {
+          var spreadCall = express(spreadId.name + '()').expression;
+          spreadCall.arguments.push(arg.argument);
+          list.splice(i, 1, spreadCall);
+        } else {
+          var newArg = i === 0 || arg.type !== syntax.Literal ? new nodes.ArrayExpression({ elements: [arg] }) : arg;
+          list.splice(i, 0, newArg);
+        }
+      });
+      if (list.length > 1) {
+        var concatExpression = express('$.concat()').expression;
+        concatExpression.callee.object = list.shift();
+        list.forEachRight(function (arg) {
+          concatExpression.arguments.unshift(arg);
+        });
+        list.splice(0, list.length, concatExpression);
+      }
     };
-    var callExpressionD = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpressionD.nodes, syntax = callExpressionD.syntax;
-    var callExpressionC = require('../../../node_modules/harmonizer/util/spread.js');
-    var getSpreadId = callExpressionC.getSpreadId;
-    var callExpressionB = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionB.express, lower = callExpressionB.lower;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueId = callExpressionA.getUniqueId;
-    var callExpression = require('../../../node_modules/harmonizer/util/iterators.js');
-    var values = callExpression.values;
     var applyContext = function (node, context) {
-      var memberExpression;
       var args = node.arguments;
-      var spread = args[args.length - 1];
-      var isSpread = spread && spread.type === syntax.SpreadElement;
-      if (!context && !isSpread) {
+      var hasSpreads = !!args.search('> #SpreadElement').length;
+      if (!hasSpreads && !context) {
         return;
       }
       var propertyName;
-      if (isSpread) {
-        args.replaceChild(spread, spread.argument);
-        var spreadId = getSpreadId(node.root).clone();
-        var spreadCall = express(spreadId.name + '()').expression;
-        (memberExpression = spreadCall.arguments).push.apply(memberExpression, spreadA(values(args)));
-        args.push(spreadCall);
+      if (hasSpreads) {
+        spreadList(node, args);
         propertyName = 'apply';
       } else {
         propertyName = 'call';
@@ -7616,14 +7534,9 @@
         applyContext(node);
       });
       program.search('#SpreadElement < elements < #ArrayExpression').forEach(function (node) {
-        var memberExpression;
         var elements = node.elements;
-        var spread = elements[elements.length - 1];
-        elements.replaceChild(spread, spread.argument);
-        var spreadId = getSpreadId(program).clone();
-        var spreadCall = express(spreadId.name + '()').expression;
-        (memberExpression = spreadCall.arguments).push.apply(memberExpression, spreadA(values(elements)));
-        node.parentNode.replaceChild(node, spreadCall);
+        spreadList(node, elements);
+        node.parentNode.replaceChild(node, node.elements[0]);
       });
     };
   },
@@ -7816,6 +7729,34 @@
       });
     };
   },
+  '../../../node_modules/es6-util/class/descriptors.js': function (require, module, exports, global) {
+    'use strict';
+    var keys = Object.keys, getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    var getDescriptor = function (object, key) {
+      var descriptor = getOwnPropertyDescriptor(object, key);
+      if (!('get' in descriptor) && !('set' in descriptor)) {
+        descriptor.enumerable = false;
+      }
+      return descriptor;
+    };
+    exports.getDescriptor = getDescriptor;
+    var getDescriptors = function (object) {
+      var base = {}, key;
+      for (var i = 0, array = keys(object); i < array.length; i++) {
+        key = array[i];
+        base[key] = getDescriptor(object, key);
+      }
+      return base;
+    };
+    exports.getDescriptors = getDescriptors;
+  },
+  '../../../node_modules/es6-util/iterator/symbol.js': function (require, module, exports, global) {
+    'use strict';
+    exports.default = function () {
+      return global.Symbol && Symbol.iterator || '@@iterator';
+    };
+    ;
+  },
   '../../../node_modules/prime/defer.js': function (require, module, exports, global) {
     'use strict';
     var kindOf = require('../../../node_modules/mout/lang/kindOf.js'), now = require('../../../node_modules/mout/time/now.js'), forEach = require('../../../node_modules/mout/array/forEach.js'), indexOf = require('../../../node_modules/mout/array/indexOf.js');
@@ -7897,6 +7838,26 @@
     };
     module.exports = defer;
   },
+  '../../../node_modules/es6-util/iterator/array/values.js': function (require, module, exports, global) {
+    'use strict';
+    var createIterator = require('../../../node_modules/es6-util/iterator/create.js').default;
+    var arrayValuesNext = function (array) {
+      var i = 0;
+      return function () {
+        return i === array.length ? {
+          value: void 0,
+          done: true
+        } : {
+          value: array[i++],
+          done: false
+        };
+      };
+    };
+    exports.default = function (array) {
+      return createIterator(arrayValuesNext(array));
+    };
+    ;
+  },
   '../../../node_modules/mout/lang/isInteger.js': function (require, module, exports, global) {
     var isNumber = require('../../../node_modules/mout/lang/isNumber.js');
     function isInteger(val) {
@@ -7929,43 +7890,348 @@
     }
     module.exports = slice;
   },
-  '../../../node_modules/harmonizer/util/arguments.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueName = callExpressionB.getUniqueName;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var getArgumentsId = function (node) {
-      if (!node.argumentsId) {
-        var argumentsName = getUniqueName(node, '_arguments');
-        var declaration = express('var ' + argumentsName + ' = arguments');
-        insertAfterStrict(node, declaration);
-        node.argumentsId = declaration.declarations[0].id;
-      }
-      return node.argumentsId;
-    };
-    exports.getArgumentsId = getArgumentsId;
+  '../../../node_modules/escodegen/node_modules/esutils/lib/utils.js': function (require, module, exports, global) {
+    (function () {
+      'use strict';
+      exports.code = require('../../../node_modules/escodegen/node_modules/esutils/lib/code.js');
+      exports.keyword = require('../../../node_modules/escodegen/node_modules/esutils/lib/keyword.js');
+    }());
   },
-  '../../../node_modules/harmonizer/util/self.js': function (require, module, exports, global) {
+  '../../../node_modules/prime/emitter.js': function (require, module, exports, global) {
     'use strict';
-    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueName = callExpressionB.getUniqueName;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var getSelfId = function (node) {
-      if (!node.selfId) {
-        var selfName = getUniqueName(node, 'self');
-        var declaration = express('var ' + selfName + ' = this');
-        insertAfterStrict(node, declaration);
-        node.selfId = declaration.declarations[0].id;
-      }
-      return node.selfId;
+    var indexOf = require('../../../node_modules/mout/array/indexOf.js'), forEach = require('../../../node_modules/mout/array/forEach.js');
+    var prime = require('../../../node_modules/prime/index.js'), defer = require('../../../node_modules/prime/defer.js');
+    var slice = Array.prototype.slice;
+    var Emitter = prime({
+        constructor: function (stoppable) {
+          this._stoppable = stoppable;
+        },
+        on: function (event, fn) {
+          var listeners = this._listeners || (this._listeners = {}), events = listeners[event] || (listeners[event] = []);
+          if (indexOf(events, fn) === -1)
+            events.push(fn);
+          return this;
+        },
+        off: function (event, fn) {
+          var listeners = this._listeners, events;
+          if (listeners && (events = listeners[event])) {
+            var io = indexOf(events, fn);
+            if (io > -1)
+              events.splice(io, 1);
+            if (!events.length)
+              delete listeners[event];
+            for (var l in listeners)
+              return this;
+            delete this._listeners;
+          }
+          return this;
+        },
+        emit: function (event) {
+          var self = this, args = slice.call(arguments, 1);
+          var emit = function () {
+            var listeners = self._listeners, events;
+            if (listeners && (events = listeners[event])) {
+              forEach(events.slice(0), function (event) {
+                var result = event.apply(self, args);
+                if (self._stoppable)
+                  return result;
+              });
+            }
+          };
+          if (args[args.length - 1] === Emitter.EMIT_SYNC) {
+            args.pop();
+            emit();
+          } else {
+            defer(emit);
+          }
+          return this;
+        }
+      });
+    Emitter.EMIT_SYNC = {};
+    module.exports = Emitter;
+  },
+  '../../../node_modules/prime/map.js': function (require, module, exports, global) {
+    'use strict';
+    var indexOf = require('../../../node_modules/mout/array/indexOf.js');
+    var prime = require('../../../node_modules/prime/index.js');
+    var Map = prime({
+        constructor: function Map() {
+          this.length = 0;
+          this._values = [];
+          this._keys = [];
+        },
+        set: function (key, value) {
+          var index = indexOf(this._keys, key);
+          if (index === -1) {
+            this._keys.push(key);
+            this._values.push(value);
+            this.length++;
+          } else {
+            this._values[index] = value;
+          }
+          return this;
+        },
+        get: function (key) {
+          var index = indexOf(this._keys, key);
+          return index === -1 ? null : this._values[index];
+        },
+        count: function () {
+          return this.length;
+        },
+        forEach: function (method, context) {
+          for (var i = 0, l = this.length; i < l; i++) {
+            if (method.call(context, this._values[i], this._keys[i], this) === false)
+              break;
+          }
+          return this;
+        },
+        map: function (method, context) {
+          var results = new Map();
+          this.forEach(function (value, key) {
+            results.set(key, method.call(context, value, key, this));
+          }, this);
+          return results;
+        },
+        filter: function (method, context) {
+          var results = new Map();
+          this.forEach(function (value, key) {
+            if (method.call(context, value, key, this))
+              results.set(key, value);
+          }, this);
+          return results;
+        },
+        every: function (method, context) {
+          var every = true;
+          this.forEach(function (value, key) {
+            if (!method.call(context, value, key, this))
+              return every = false;
+          }, this);
+          return every;
+        },
+        some: function (method, context) {
+          var some = false;
+          this.forEach(function (value, key) {
+            if (method.call(context, value, key, this))
+              return !(some = true);
+          }, this);
+          return some;
+        },
+        indexOf: function (value) {
+          var index = indexOf(this._values, value);
+          return index > -1 ? this._keys[index] : null;
+        },
+        remove: function (value) {
+          var index = indexOf(this._values, value);
+          if (index !== -1) {
+            this._values.splice(index, 1);
+            this.length--;
+            return this._keys.splice(index, 1)[0];
+          }
+          return null;
+        },
+        unset: function (key) {
+          var index = indexOf(this._keys, key);
+          if (index !== -1) {
+            this._keys.splice(index, 1);
+            this.length--;
+            return this._values.splice(index, 1)[0];
+          }
+          return null;
+        },
+        keys: function () {
+          return this._keys.slice();
+        },
+        values: function () {
+          return this._values.slice();
+        }
+      });
+    var map = function () {
+      return new Map();
     };
-    exports.getSelfId = getSelfId;
+    map.prototype = Map.prototype;
+    module.exports = map;
+  },
+  '../../../node_modules/prime/index.js': function (require, module, exports, global) {
+    'use strict';
+    var hasOwn = require('../../../node_modules/mout/object/hasOwn.js'), mixIn = require('../../../node_modules/mout/object/mixIn.js'), create = require('../../../node_modules/mout/lang/createObject.js'), kindOf = require('../../../node_modules/mout/lang/kindOf.js');
+    var hasDescriptors = true;
+    try {
+      Object.defineProperty({}, '~', {});
+      Object.getOwnPropertyDescriptor({}, '~');
+    } catch (e) {
+      hasDescriptors = false;
+    }
+    var hasEnumBug = !{ valueOf: 0 }.propertyIsEnumerable('valueOf'), buggy = [
+        'toString',
+        'valueOf'
+      ];
+    var verbs = /^constructor|inherits|mixin$/;
+    var implement = function (proto) {
+      var prototype = this.prototype;
+      for (var key in proto) {
+        if (key.match(verbs))
+          continue;
+        if (hasDescriptors) {
+          var descriptor = Object.getOwnPropertyDescriptor(proto, key);
+          if (descriptor) {
+            Object.defineProperty(prototype, key, descriptor);
+            continue;
+          }
+        }
+        prototype[key] = proto[key];
+      }
+      if (hasEnumBug)
+        for (var i = 0; key = buggy[i]; i++) {
+          var value = proto[key];
+          if (value !== Object.prototype[key])
+            prototype[key] = value;
+        }
+      return this;
+    };
+    var prime = function (proto) {
+      if (kindOf(proto) === 'Function')
+        proto = { constructor: proto };
+      var superprime = proto.inherits;
+      var constructor = hasOwn(proto, 'constructor') ? proto.constructor : superprime ? function () {
+          return superprime.apply(this, arguments);
+        } : function () {
+        };
+      if (superprime) {
+        mixIn(constructor, superprime);
+        var superproto = superprime.prototype;
+        var cproto = constructor.prototype = create(superproto);
+        constructor.parent = superproto;
+        cproto.constructor = constructor;
+      }
+      if (!constructor.implement)
+        constructor.implement = implement;
+      var mixins = proto.mixin;
+      if (mixins) {
+        if (kindOf(mixins) !== 'Array')
+          mixins = [mixins];
+        for (var i = 0; i < mixins.length; i++)
+          constructor.implement(create(mixins[i].prototype));
+      }
+      return constructor.implement(proto);
+    };
+    module.exports = prime;
+  },
+  '../../../node_modules/mout/array/forEach.js': function (require, module, exports, global) {
+    function forEach(arr, callback, thisObj) {
+      if (arr == null) {
+        return;
+      }
+      var i = -1, len = arr.length;
+      while (++i < len) {
+        if (callback.call(thisObj, arr[i], i, arr) === false) {
+          break;
+        }
+      }
+    }
+    module.exports = forEach;
+  },
+  '../../../node_modules/mout/array/map.js': function (require, module, exports, global) {
+    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
+    function map(arr, callback, thisObj) {
+      callback = makeIterator(callback, thisObj);
+      var results = [];
+      if (arr == null) {
+        return results;
+      }
+      var i = -1, len = arr.length;
+      while (++i < len) {
+        results[i] = callback(arr[i], i, arr);
+      }
+      return results;
+    }
+    module.exports = map;
+  },
+  '../../../node_modules/mout/array/filter.js': function (require, module, exports, global) {
+    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
+    function filter(arr, callback, thisObj) {
+      callback = makeIterator(callback, thisObj);
+      var results = [];
+      if (arr == null) {
+        return results;
+      }
+      var i = -1, len = arr.length, value;
+      while (++i < len) {
+        value = arr[i];
+        if (callback(value, i, arr)) {
+          results.push(value);
+        }
+      }
+      return results;
+    }
+    module.exports = filter;
+  },
+  '../../../node_modules/mout/array/every.js': function (require, module, exports, global) {
+    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
+    function every(arr, callback, thisObj) {
+      callback = makeIterator(callback, thisObj);
+      var result = true;
+      if (arr == null) {
+        return result;
+      }
+      var i = -1, len = arr.length;
+      while (++i < len) {
+        if (!callback(arr[i], i, arr)) {
+          result = false;
+          break;
+        }
+      }
+      return result;
+    }
+    module.exports = every;
+  },
+  '../../../node_modules/mout/array/some.js': function (require, module, exports, global) {
+    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
+    function some(arr, callback, thisObj) {
+      callback = makeIterator(callback, thisObj);
+      var result = false;
+      if (arr == null) {
+        return result;
+      }
+      var i = -1, len = arr.length;
+      while (++i < len) {
+        if (callback(arr[i], i, arr)) {
+          result = true;
+          break;
+        }
+      }
+      return result;
+    }
+    module.exports = some;
+  },
+  '../../../node_modules/mout/array/indexOf.js': function (require, module, exports, global) {
+    function indexOf(arr, item, fromIndex) {
+      fromIndex = fromIndex || 0;
+      if (arr == null) {
+        return -1;
+      }
+      var len = arr.length, i = fromIndex < 0 ? len + fromIndex : fromIndex;
+      while (i < len) {
+        if (arr[i] === item) {
+          return i;
+        }
+        i++;
+      }
+      return -1;
+    }
+    module.exports = indexOf;
+  },
+  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
+    'use strict';
+    require('../../../node_modules/nodes/lib/finder.js');
+    var types = require('../../../node_modules/nodes/types.js');
+    var factory = require('../../../node_modules/nodes/lib/factory.js');
+    var syntax = require('../../../node_modules/nodes/syntax.json');
+    var build = factory.build;
+    var lists = factory.lists;
+    exports.default = exports.build = build;
+    exports.syntax = syntax;
+    exports.nodes = types;
+    exports.lists = lists;
   },
   '../../../node_modules/harmonizer/util/string.js': function (require, module, exports, global) {
     'use strict';
@@ -7992,8 +8258,12 @@
   },
   '../../../node_modules/harmonizer/util/id.js': function (require, module, exports, global) {
     'use strict';
-    var callExpression = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpression.nodes;
+    var callExpressionB = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpressionB.nodes;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
+    var express = callExpressionA.express;
+    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
+    var insertAfterStrict = callExpression.insertAfterStrict;
     var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     var letter = function (i) {
       if (i <= 25) {
@@ -8015,6 +8285,17 @@
       return new nodes.Identifier({ name: name });
     };
     exports.getUniqueId = getUniqueId;
+    var createUniqueDeclaration = function (node, name, expression) {
+      var id = '@@' + name;
+      if (!node[id]) {
+        var uniqueName = getUniqueName(node, name);
+        var declaration = express('var ' + uniqueName + ' = ' + expression);
+        insertAfterStrict(node, declaration);
+        node[id] = declaration.declarations[0].id;
+      }
+      return node[id].clone();
+    };
+    exports.createUniqueDeclaration = createUniqueDeclaration;
   },
   '../../../node_modules/harmonizer/util/insertion.js': function (require, module, exports, global) {
     'use strict';
@@ -8024,7 +8305,7 @@
     var listIndex = function (node) {
       var lastNode = node, firstList;
       while (node = node.parentNode) {
-        if (node instanceof List) {
+        if (node instanceof List && node.parentNode.body === node) {
           firstList = node;
           break;
         } else {
@@ -8062,85 +8343,6 @@
       return node;
     };
     exports.insertAfterStrict = insertAfterStrict;
-  },
-  '../../../node_modules/harmonizer/util/extend.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueName = callExpressionB.getUniqueName;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var extend = 'function (SuperClass, Class, prototype, members) {\n  var descriptors = function(object) {\n    var base = {}, descriptor;\n    for (var key in object) {\n      descriptor = Object.getOwnPropertyDescriptor(object, key);\n      if (!(\'get\' in descriptor) && !(\'set\' in descriptor)) {\n        descriptor.enumerable = false;\n      }\n      base[key] = descriptor;\n    }\n    return base;\n  };\n\n  if (SuperClass) Class.__proto__ = SuperClass;\n  Object.defineProperty(Class, \'prototype\', {\n    value: Object.create(SuperClass === null ? null : SuperClass.prototype, descriptors(prototype))\n  });\n\n  Object.defineProperty(Class.prototype, \'constructor\', { value: Class });\n\n  if (members) Object.defineProperties(Class, descriptors(members));\n  return Class;\n}';
-    var getExtendId = function (node) {
-      if (!node.extendId) {
-        var extendName = getUniqueName(node, 'extend');
-        var declaration = express('var ' + extendName + ' = ' + extend);
-        insertAfterStrict(node, declaration);
-        node.extendId = declaration.declarations[0].id;
-      }
-      return node.extendId;
-    };
-    exports.getExtendId = getExtendId;
-  },
-  '../../../node_modules/harmonizer/util/slice.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueName = callExpressionB.getUniqueName;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var getSliceId = function (node) {
-      if (!node.sliceId) {
-        var sliceName = getUniqueName(node, 'slice');
-        var declaration = express('var ' + sliceName + ' = Array.prototype.slice');
-        insertAfterStrict(node, declaration);
-        node.sliceId = declaration.declarations[0].id;
-      }
-      return node.sliceId;
-    };
-    exports.getSliceId = getSliceId;
-  },
-  '../../../node_modules/harmonizer/util/spread.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
-    var getUniqueName = callExpressionB.getUniqueName;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var spread = 'function() {\n  var array = [], last = arguments.length - 1;\n  for (var i = 0; i < last; i++) array.push(arguments[i]);\n  var iterator = arguments[last][\'@@iterator\'](), step;\n  while (!(step = iterator.next()).done) array.push(step.value);\n  return array;\n}';
-    var getSpreadId = function (node) {
-      if (!node.spreadId) {
-        var spreadName = getUniqueName(node, 'spread');
-        var declaration = express('var ' + spreadName + ' = ' + spread);
-        insertAfterStrict(node, declaration);
-        node.spreadId = declaration.declarations[0].id;
-      }
-      return node.spreadId;
-    };
-    exports.getSpreadId = getSpreadId;
-  },
-  '../../../node_modules/escodegen/node_modules/esutils/lib/utils.js': function (require, module, exports, global) {
-    (function () {
-      'use strict';
-      exports.code = require('../../../node_modules/escodegen/node_modules/esutils/lib/code.js');
-      exports.keyword = require('../../../node_modules/escodegen/node_modules/esutils/lib/keyword.js');
-    }());
-  },
-  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
-    'use strict';
-    require('../../../node_modules/nodes/lib/finder.js');
-    var types = require('../../../node_modules/nodes/types.js');
-    var factory = require('../../../node_modules/nodes/lib/factory.js');
-    var syntax = require('../../../node_modules/nodes/syntax.json');
-    var build = factory.build;
-    var lists = factory.lists;
-    exports.default = exports.build = build;
-    exports.syntax = syntax;
-    exports.nodes = types;
-    exports.lists = lists;
   },
   '../../../node_modules/estraverse/estraverse.js': function (require, module, exports, global) {
     (function (root, factory) {
@@ -8754,328 +8956,23 @@
       exports.Controller = Controller;
     }));
   },
-  '../../../node_modules/prime/emitter.js': function (require, module, exports, global) {
+  '../../../node_modules/es6-util/iterator/create.js': function (require, module, exports, global) {
     'use strict';
-    var indexOf = require('../../../node_modules/mout/array/indexOf.js'), forEach = require('../../../node_modules/mout/array/forEach.js');
-    var prime = require('../../../node_modules/prime/index.js'), defer = require('../../../node_modules/prime/defer.js');
-    var slice = Array.prototype.slice;
-    var Emitter = prime({
-        constructor: function (stoppable) {
-          this._stoppable = stoppable;
-        },
-        on: function (event, fn) {
-          var listeners = this._listeners || (this._listeners = {}), events = listeners[event] || (listeners[event] = []);
-          if (indexOf(events, fn) === -1)
-            events.push(fn);
-          return this;
-        },
-        off: function (event, fn) {
-          var listeners = this._listeners, events;
-          if (listeners && (events = listeners[event])) {
-            var io = indexOf(events, fn);
-            if (io > -1)
-              events.splice(io, 1);
-            if (!events.length)
-              delete listeners[event];
-            for (var l in listeners)
-              return this;
-            delete this._listeners;
-          }
-          return this;
-        },
-        emit: function (event) {
-          var self = this, args = slice.call(arguments, 1);
-          var emit = function () {
-            var listeners = self._listeners, events;
-            if (listeners && (events = listeners[event])) {
-              forEach(events.slice(0), function (event) {
-                var result = event.apply(self, args);
-                if (self._stoppable)
-                  return result;
-              });
-            }
-          };
-          if (args[args.length - 1] === Emitter.EMIT_SYNC) {
-            args.pop();
-            emit();
-          } else {
-            defer(emit);
-          }
-          return this;
-        }
-      });
-    Emitter.EMIT_SYNC = {};
-    module.exports = Emitter;
-  },
-  '../../../node_modules/prime/map.js': function (require, module, exports, global) {
-    'use strict';
-    var indexOf = require('../../../node_modules/mout/array/indexOf.js');
-    var prime = require('../../../node_modules/prime/index.js');
-    var Map = prime({
-        constructor: function Map() {
-          this.length = 0;
-          this._values = [];
-          this._keys = [];
-        },
-        set: function (key, value) {
-          var index = indexOf(this._keys, key);
-          if (index === -1) {
-            this._keys.push(key);
-            this._values.push(value);
-            this.length++;
-          } else {
-            this._values[index] = value;
-          }
-          return this;
-        },
-        get: function (key) {
-          var index = indexOf(this._keys, key);
-          return index === -1 ? null : this._values[index];
-        },
-        count: function () {
-          return this.length;
-        },
-        forEach: function (method, context) {
-          for (var i = 0, l = this.length; i < l; i++) {
-            if (method.call(context, this._values[i], this._keys[i], this) === false)
-              break;
-          }
-          return this;
-        },
-        map: function (method, context) {
-          var results = new Map();
-          this.forEach(function (value, key) {
-            results.set(key, method.call(context, value, key, this));
-          }, this);
-          return results;
-        },
-        filter: function (method, context) {
-          var results = new Map();
-          this.forEach(function (value, key) {
-            if (method.call(context, value, key, this))
-              results.set(key, value);
-          }, this);
-          return results;
-        },
-        every: function (method, context) {
-          var every = true;
-          this.forEach(function (value, key) {
-            if (!method.call(context, value, key, this))
-              return every = false;
-          }, this);
-          return every;
-        },
-        some: function (method, context) {
-          var some = false;
-          this.forEach(function (value, key) {
-            if (method.call(context, value, key, this))
-              return !(some = true);
-          }, this);
-          return some;
-        },
-        indexOf: function (value) {
-          var index = indexOf(this._values, value);
-          return index > -1 ? this._keys[index] : null;
-        },
-        remove: function (value) {
-          var index = indexOf(this._values, value);
-          if (index !== -1) {
-            this._values.splice(index, 1);
-            this.length--;
-            return this._keys.splice(index, 1)[0];
-          }
-          return null;
-        },
-        unset: function (key) {
-          var index = indexOf(this._keys, key);
-          if (index !== -1) {
-            this._keys.splice(index, 1);
-            this.length--;
-            return this._values.splice(index, 1)[0];
-          }
-          return null;
-        },
-        keys: function () {
-          return this._keys.slice();
-        },
-        values: function () {
-          return this._values.slice();
-        }
-      });
-    var map = function () {
-      return new Map();
+    var getIteratorSymbol = require('../../../node_modules/es6-util/iterator/symbol.js').default;
+    exports.default = function createIterator(next) {
+      var it = { next: next };
+      it[getIteratorSymbol()] = function () {
+        return it;
+      };
+      return it;
     };
-    map.prototype = Map.prototype;
-    module.exports = map;
   },
-  '../../../node_modules/prime/index.js': function (require, module, exports, global) {
-    'use strict';
-    var hasOwn = require('../../../node_modules/mout/object/hasOwn.js'), mixIn = require('../../../node_modules/mout/object/mixIn.js'), create = require('../../../node_modules/mout/lang/createObject.js'), kindOf = require('../../../node_modules/mout/lang/kindOf.js');
-    var hasDescriptors = true;
-    try {
-      Object.defineProperty({}, '~', {});
-      Object.getOwnPropertyDescriptor({}, '~');
-    } catch (e) {
-      hasDescriptors = false;
+  '../../../node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
+    var isKind = require('../../../node_modules/mout/lang/isKind.js');
+    function isNumber(val) {
+      return isKind(val, 'Number');
     }
-    var hasEnumBug = !{ valueOf: 0 }.propertyIsEnumerable('valueOf'), buggy = [
-        'toString',
-        'valueOf'
-      ];
-    var verbs = /^constructor|inherits|mixin$/;
-    var implement = function (proto) {
-      var prototype = this.prototype;
-      for (var key in proto) {
-        if (key.match(verbs))
-          continue;
-        if (hasDescriptors) {
-          var descriptor = Object.getOwnPropertyDescriptor(proto, key);
-          if (descriptor) {
-            Object.defineProperty(prototype, key, descriptor);
-            continue;
-          }
-        }
-        prototype[key] = proto[key];
-      }
-      if (hasEnumBug)
-        for (var i = 0; key = buggy[i]; i++) {
-          var value = proto[key];
-          if (value !== Object.prototype[key])
-            prototype[key] = value;
-        }
-      return this;
-    };
-    var prime = function (proto) {
-      if (kindOf(proto) === 'Function')
-        proto = { constructor: proto };
-      var superprime = proto.inherits;
-      var constructor = hasOwn(proto, 'constructor') ? proto.constructor : superprime ? function () {
-          return superprime.apply(this, arguments);
-        } : function () {
-        };
-      if (superprime) {
-        mixIn(constructor, superprime);
-        var superproto = superprime.prototype;
-        var cproto = constructor.prototype = create(superproto);
-        constructor.parent = superproto;
-        cproto.constructor = constructor;
-      }
-      if (!constructor.implement)
-        constructor.implement = implement;
-      var mixins = proto.mixin;
-      if (mixins) {
-        if (kindOf(mixins) !== 'Array')
-          mixins = [mixins];
-        for (var i = 0; i < mixins.length; i++)
-          constructor.implement(create(mixins[i].prototype));
-      }
-      return constructor.implement(proto);
-    };
-    module.exports = prime;
-  },
-  '../../../node_modules/mout/array/forEach.js': function (require, module, exports, global) {
-    function forEach(arr, callback, thisObj) {
-      if (arr == null) {
-        return;
-      }
-      var i = -1, len = arr.length;
-      while (++i < len) {
-        if (callback.call(thisObj, arr[i], i, arr) === false) {
-          break;
-        }
-      }
-    }
-    module.exports = forEach;
-  },
-  '../../../node_modules/mout/array/map.js': function (require, module, exports, global) {
-    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
-    function map(arr, callback, thisObj) {
-      callback = makeIterator(callback, thisObj);
-      var results = [];
-      if (arr == null) {
-        return results;
-      }
-      var i = -1, len = arr.length;
-      while (++i < len) {
-        results[i] = callback(arr[i], i, arr);
-      }
-      return results;
-    }
-    module.exports = map;
-  },
-  '../../../node_modules/mout/array/filter.js': function (require, module, exports, global) {
-    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
-    function filter(arr, callback, thisObj) {
-      callback = makeIterator(callback, thisObj);
-      var results = [];
-      if (arr == null) {
-        return results;
-      }
-      var i = -1, len = arr.length, value;
-      while (++i < len) {
-        value = arr[i];
-        if (callback(value, i, arr)) {
-          results.push(value);
-        }
-      }
-      return results;
-    }
-    module.exports = filter;
-  },
-  '../../../node_modules/mout/array/every.js': function (require, module, exports, global) {
-    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
-    function every(arr, callback, thisObj) {
-      callback = makeIterator(callback, thisObj);
-      var result = true;
-      if (arr == null) {
-        return result;
-      }
-      var i = -1, len = arr.length;
-      while (++i < len) {
-        if (!callback(arr[i], i, arr)) {
-          result = false;
-          break;
-        }
-      }
-      return result;
-    }
-    module.exports = every;
-  },
-  '../../../node_modules/mout/array/some.js': function (require, module, exports, global) {
-    var makeIterator = require('../../../node_modules/mout/function/makeIterator_.js');
-    function some(arr, callback, thisObj) {
-      callback = makeIterator(callback, thisObj);
-      var result = false;
-      if (arr == null) {
-        return result;
-      }
-      var i = -1, len = arr.length;
-      while (++i < len) {
-        if (callback(arr[i], i, arr)) {
-          result = true;
-          break;
-        }
-      }
-      return result;
-    }
-    module.exports = some;
-  },
-  '../../../node_modules/mout/array/indexOf.js': function (require, module, exports, global) {
-    function indexOf(arr, item, fromIndex) {
-      fromIndex = fromIndex || 0;
-      if (arr == null) {
-        return -1;
-      }
-      var len = arr.length, i = fromIndex < 0 ? len + fromIndex : fromIndex;
-      while (i < len) {
-        if (arr[i] === item) {
-          return i;
-        }
-        i++;
-      }
-      return -1;
-    }
-    module.exports = indexOf;
+    module.exports = isNumber;
   },
   '../../../node_modules/mout/lang/kindOf.js': function (require, module, exports, global) {
     var _rKind = /^\[object (.*)\]$/, _toString = Object.prototype.toString, UNDEF;
@@ -9090,18 +8987,6 @@
     }
     module.exports = kindOf;
   },
-  '../../../node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
-    var isKind = require('../../../node_modules/mout/lang/isKind.js');
-    function isNumber(val) {
-      return isKind(val, 'Number');
-    }
-    module.exports = isNumber;
-  },
-  '../../../node_modules/source-map/lib/source-map.js': function (require, module, exports, global) {
-    exports.SourceMapGenerator = require('../../../node_modules/source-map/lib/source-map/source-map-generator.js').SourceMapGenerator;
-    exports.SourceMapConsumer = require('../../../node_modules/source-map/lib/source-map/source-map-consumer.js').SourceMapConsumer;
-    exports.SourceNode = require('../../../node_modules/source-map/lib/source-map/source-node.js').SourceNode;
-  },
   '../../../node_modules/mout/string/trim.js': function (require, module, exports, global) {
     var toString = require('../../../node_modules/mout/lang/toString.js');
     var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
@@ -9114,6 +8999,11 @@
     }
     module.exports = trim;
   },
+  '../../../node_modules/source-map/lib/source-map.js': function (require, module, exports, global) {
+    exports.SourceMapGenerator = require('../../../node_modules/source-map/lib/source-map/source-map-generator.js').SourceMapGenerator;
+    exports.SourceMapConsumer = require('../../../node_modules/source-map/lib/source-map/source-map-consumer.js').SourceMapConsumer;
+    exports.SourceNode = require('../../../node_modules/source-map/lib/source-map/source-node.js').SourceNode;
+  },
   '../../../node_modules/mout/time/now.js': function (require, module, exports, global) {
     function now() {
       return now.get();
@@ -9122,6 +9012,20 @@
       return +new Date();
     };
     module.exports = now;
+  },
+  '../../../node_modules/mout/lang/createObject.js': function (require, module, exports, global) {
+    var mixIn = require('../../../node_modules/mout/object/mixIn.js');
+    function createObject(parent, props) {
+      function F() {
+      }
+      F.prototype = parent;
+      return mixIn(new F(), props);
+    }
+    module.exports = createObject;
+  },
+  '../../../node_modules/slick/index.js': function (require, module, exports, global) {
+    'use strict';
+    module.exports = 'document' in global ? require('../../../node_modules/slick/finder.js') : { parse: require('../../../node_modules/slick/parser.js') };
   },
   '../../../node_modules/nodes/types.js': function (require, module, exports, global) {
     'use strict';
@@ -9690,19 +9594,140 @@
       };
     }());
   },
-  '../../../node_modules/mout/lang/createObject.js': function (require, module, exports, global) {
-    var mixIn = require('../../../node_modules/mout/object/mixIn.js');
-    function createObject(parent, props) {
-      function F() {
-      }
-      F.prototype = parent;
-      return mixIn(new F(), props);
+  '../../../node_modules/mout/lang/isKind.js': function (require, module, exports, global) {
+    var kindOf = require('../../../node_modules/mout/lang/kindOf.js');
+    function isKind(val, kind) {
+      return kindOf(val) === kind;
     }
-    module.exports = createObject;
+    module.exports = isKind;
   },
-  '../../../node_modules/slick/index.js': function (require, module, exports, global) {
-    'use strict';
-    module.exports = 'document' in global ? require('../../../node_modules/slick/finder.js') : { parse: require('../../../node_modules/slick/parser.js') };
+  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
+    function hasOwn(obj, prop) {
+      return Object.prototype.hasOwnProperty.call(obj, prop);
+    }
+    module.exports = hasOwn;
+  },
+  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
+    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
+    function mixIn(target, objects) {
+      var i = 0, n = arguments.length, obj;
+      while (++i < n) {
+        obj = arguments[i];
+        if (obj != null) {
+          forOwn(obj, copyProp, target);
+        }
+      }
+      return target;
+    }
+    function copyProp(val, key) {
+      this[key] = val;
+    }
+    module.exports = mixIn;
+  },
+  '../../../node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
+    var identity = require('../../../node_modules/mout/function/identity.js');
+    var prop = require('../../../node_modules/mout/function/prop.js');
+    var deepMatches = require('../../../node_modules/mout/object/deepMatches.js');
+    function makeIterator(src, thisObj) {
+      if (src == null) {
+        return identity;
+      }
+      switch (typeof src) {
+      case 'function':
+        return typeof thisObj !== 'undefined' ? function (val, i, arr) {
+          return src.call(thisObj, val, i, arr);
+        } : src;
+      case 'object':
+        return function (val) {
+          return deepMatches(val, src);
+        };
+      case 'string':
+      case 'number':
+        return prop(src);
+      }
+    }
+    module.exports = makeIterator;
+  },
+  '../../../node_modules/mout/lang/toString.js': function (require, module, exports, global) {
+    function toString(val) {
+      return val == null ? '' : val.toString();
+    }
+    module.exports = toString;
+  },
+  '../../../node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
+    module.exports = [
+      ' ',
+      '\n',
+      '\r',
+      '\t',
+      '\f',
+      '\x0B',
+      '\xA0',
+      '\u1680',
+      '\u180E',
+      '\u2000',
+      '\u2001',
+      '\u2002',
+      '\u2003',
+      '\u2004',
+      '\u2005',
+      '\u2006',
+      '\u2007',
+      '\u2008',
+      '\u2009',
+      '\u200A',
+      '\u2028',
+      '\u2029',
+      '\u202F',
+      '\u205F',
+      '\u3000'
+    ];
+  },
+  '../../../node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
+    var toString = require('../../../node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
+    function ltrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
+      while (found && start < len) {
+        found = false;
+        i = -1;
+        c = str.charAt(start);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            start++;
+            break;
+          }
+        }
+      }
+      return start >= len ? '' : str.substr(start, len);
+    }
+    module.exports = ltrim;
+  },
+  '../../../node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
+    var toString = require('../../../node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
+    function rtrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var end = str.length - 1, charLen = chars.length, found = true, i, c;
+      while (found && end >= 0) {
+        found = false;
+        i = -1;
+        c = str.charAt(end);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            end--;
+            break;
+          }
+        }
+      }
+      return end >= 0 ? str.substring(0, end + 1) : '';
+    }
+    module.exports = rtrim;
   },
   '../../../node_modules/nodes/lib/finder.js': function (require, module, exports, global) {
     'use strict';
@@ -10029,17 +10054,16 @@
           }
           if (!parentNode)
             return false;
-          if (syntax.FunctionDeclaration === parentNode.type) {
+          if (types.Function.test(parentNode)) {
             if (parentNode.id === node)
               return true;
-          }
-          if (types.Function.test(parentNode)) {
             if (parentNode.rest === node)
               return true;
             if (~parentNode.params.indexOf(node))
               return true;
             if (~parentNode.defaults.indexOf(node))
               return true;
+            return false;
           }
           if (syntax.VariableDeclarator === parentNode.type) {
             return parentNode.id === node;
@@ -10067,16 +10091,10 @@
         }
       });
     var scopeMe = d(function (expression) {
-        var parentNode = this.parentNode;
-        if (!parentNode)
-          return;
-        if (syntax.Identifier === this.type && syntax.FunctionDeclaration === parentNode.type && parentNode.id === this) {
-          return parentNode.scope(expression);
-        }
-        var parent = this;
-        while (parent = parent.parentNode) {
-          if (pseudos.scope(parent) && (!expression || parent.matches(expression)))
-            return parent;
+        var parentNode = this;
+        while (parentNode = parentNode.parentNode) {
+          if (pseudos.scope(parentNode) && (!expression || parentNode.matches(expression)))
+            return parentNode;
         }
       });
     var matchesMe = d(function (expression) {
@@ -10538,141 +10556,6 @@
     exports.describe = describe;
     exports.expect = expect;
     exports.build = build;
-  },
-  '../../../node_modules/mout/lang/isKind.js': function (require, module, exports, global) {
-    var kindOf = require('../../../node_modules/mout/lang/kindOf.js');
-    function isKind(val, kind) {
-      return kindOf(val) === kind;
-    }
-    module.exports = isKind;
-  },
-  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
-    function hasOwn(obj, prop) {
-      return Object.prototype.hasOwnProperty.call(obj, prop);
-    }
-    module.exports = hasOwn;
-  },
-  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
-    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
-    function mixIn(target, objects) {
-      var i = 0, n = arguments.length, obj;
-      while (++i < n) {
-        obj = arguments[i];
-        if (obj != null) {
-          forOwn(obj, copyProp, target);
-        }
-      }
-      return target;
-    }
-    function copyProp(val, key) {
-      this[key] = val;
-    }
-    module.exports = mixIn;
-  },
-  '../../../node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
-    var identity = require('../../../node_modules/mout/function/identity.js');
-    var prop = require('../../../node_modules/mout/function/prop.js');
-    var deepMatches = require('../../../node_modules/mout/object/deepMatches.js');
-    function makeIterator(src, thisObj) {
-      if (src == null) {
-        return identity;
-      }
-      switch (typeof src) {
-      case 'function':
-        return typeof thisObj !== 'undefined' ? function (val, i, arr) {
-          return src.call(thisObj, val, i, arr);
-        } : src;
-      case 'object':
-        return function (val) {
-          return deepMatches(val, src);
-        };
-      case 'string':
-      case 'number':
-        return prop(src);
-      }
-    }
-    module.exports = makeIterator;
-  },
-  '../../../node_modules/mout/lang/toString.js': function (require, module, exports, global) {
-    function toString(val) {
-      return val == null ? '' : val.toString();
-    }
-    module.exports = toString;
-  },
-  '../../../node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
-    module.exports = [
-      ' ',
-      '\n',
-      '\r',
-      '\t',
-      '\f',
-      '\x0B',
-      '\xA0',
-      '\u1680',
-      '\u180E',
-      '\u2000',
-      '\u2001',
-      '\u2002',
-      '\u2003',
-      '\u2004',
-      '\u2005',
-      '\u2006',
-      '\u2007',
-      '\u2008',
-      '\u2009',
-      '\u200A',
-      '\u2028',
-      '\u2029',
-      '\u202F',
-      '\u205F',
-      '\u3000'
-    ];
-  },
-  '../../../node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
-    var toString = require('../../../node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
-    function ltrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
-      while (found && start < len) {
-        found = false;
-        i = -1;
-        c = str.charAt(start);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            start++;
-            break;
-          }
-        }
-      }
-      return start >= len ? '' : str.substr(start, len);
-    }
-    module.exports = ltrim;
-  },
-  '../../../node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
-    var toString = require('../../../node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
-    function rtrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var end = str.length - 1, charLen = chars.length, found = true, i, c;
-      while (found && end >= 0) {
-        found = false;
-        i = -1;
-        c = str.charAt(end);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            end--;
-            break;
-          }
-        }
-      }
-      return end >= 0 ? str.substring(0, end + 1) : '';
-    }
-    module.exports = rtrim;
   },
   '../../../node_modules/source-map/lib/source-map/source-map-generator.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
@@ -12132,38 +12015,6 @@
     slick.parse = parse;
     module.exports = slick;
   },
-  '../../../node_modules/nodes/util/type-of.js': function (require, module, exports, global) {
-    'use strict';
-    function typeOf(object) {
-      if (object === void 0)
-        return 'Undefined';
-      if (object === null)
-        return 'Null';
-      return object.constructor.name;
-    }
-    typeOf.String = function (item) {
-      return typeOf(item) === 'String';
-    };
-    typeOf.Object = function (item) {
-      return typeOf(item) === 'Object';
-    };
-    typeOf.Number = function (item) {
-      return typeOf(item) === 'Number';
-    };
-    typeOf.RegExp = function (item) {
-      return typeOf(item) === 'RegExp';
-    };
-    typeOf.Boolean = function (item) {
-      return typeOf(item) === 'Boolean';
-    };
-    typeOf.Function = function (item) {
-      return typeOf(item) === 'Function';
-    };
-    typeOf.Array = function (item) {
-      return typeOf(item) === 'Array';
-    };
-    module.exports = typeOf;
-  },
   '../../../node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('../../../node_modules/mout/object/hasOwn.js');
     var forIn = require('../../../node_modules/mout/object/forIn.js');
@@ -12233,6 +12084,38 @@
     }
     module.exports = deepMatches;
   },
+  '../../../node_modules/nodes/util/type-of.js': function (require, module, exports, global) {
+    'use strict';
+    function typeOf(object) {
+      if (object === void 0)
+        return 'Undefined';
+      if (object === null)
+        return 'Null';
+      return object.constructor.name;
+    }
+    typeOf.String = function (item) {
+      return typeOf(item) === 'String';
+    };
+    typeOf.Object = function (item) {
+      return typeOf(item) === 'Object';
+    };
+    typeOf.Number = function (item) {
+      return typeOf(item) === 'Number';
+    };
+    typeOf.RegExp = function (item) {
+      return typeOf(item) === 'RegExp';
+    };
+    typeOf.Boolean = function (item) {
+      return typeOf(item) === 'Boolean';
+    };
+    typeOf.Function = function (item) {
+      return typeOf(item) === 'Function';
+    };
+    typeOf.Array = function (item) {
+      return typeOf(item) === 'Array';
+    };
+    module.exports = typeOf;
+  },
   '../../../node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
       var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
@@ -12285,33 +12168,6 @@
           value: fromVLQSigned(result),
           rest: aStr.slice(i)
         };
-      };
-    });
-  },
-  '../../../node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
-        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
-        var cmp = aCompare(aNeedle, aHaystack[mid], true);
-        if (cmp === 0) {
-          return aHaystack[mid];
-        } else if (cmp > 0) {
-          if (aHigh - mid > 1) {
-            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
-          }
-          return aHaystack[mid];
-        } else {
-          if (mid - aLow > 1) {
-            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
-          }
-          return aLow < 0 ? null : aHaystack[aLow];
-        }
-      }
-      exports.search = function search(aNeedle, aHaystack, aCompare) {
-        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
       };
     });
   },
@@ -12554,6 +12410,33 @@
         return this._array.slice();
       };
       exports.ArraySet = ArraySet;
+    });
+  },
+  '../../../node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
+        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
+        var cmp = aCompare(aNeedle, aHaystack[mid], true);
+        if (cmp === 0) {
+          return aHaystack[mid];
+        } else if (cmp > 0) {
+          if (aHigh - mid > 1) {
+            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
+          }
+          return aHaystack[mid];
+        } else {
+          if (mid - aLow > 1) {
+            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
+          }
+          return aLow < 0 ? null : aHaystack[aLow];
+        }
+      }
+      exports.search = function search(aNeedle, aHaystack, aCompare) {
+        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
+      };
     });
   },
   '../../../node_modules/mout/object/forIn.js': function (require, module, exports, global) {

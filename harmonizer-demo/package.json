@@ -4,6 +4,7 @@
   "description": "harmonizer demo",
   "main": "./index.js",
   "dependencies": {
+    "es6-util": "0.0.1",
     "elements": "^0.4.3",
     "harmonizer": "kamicane/harmonizer#master",
     "mout": "^0.9.1",

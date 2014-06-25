@@ -12,22 +12,20 @@ var escodegen = require('escodegen');
 
 var tosource = require('tosource');
 
-// implement the minimum indispensible
+var createClass = require('es6-util/class/create');
+var iteratorOf = require('es6-util/iterator/get');
+var spread = require('es6-util/iterator/spread');
 
-Object.defineProperty(Array.prototype, '@@iterator', {
-  writable: true,
-  configurable: true,
-  value: function() {
-    var array = this, i = 0;
-    var next = function() {
-      if (i === array.length) return { value: void 0, done: true };
-      return { value: array[i++], done: false };
-    };
-    var it = { next: next };
-    it['@@iterator'] = function() { return it; };
-    return it;
+// hack to make require(es6-util) work in the demo
+// this will bork require for the rest of the current module
+// but we already required what we needed so whatever :)
+require = function(module) {
+  switch (module) {
+    case 'es6-util/class/create': return createClass;
+    case 'es6-util/iterator/get': return iteratorOf;
+    case 'es6-util/iterator/spread': return spread;
   }
-});
+};
 
 var generate = function(object) {
 
