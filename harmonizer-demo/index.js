@@ -5,7 +5,7 @@ var throttle = require('./util/throttle');
 var $ = require('elements');
 var ready = require('elements/domready');
 
-var harmonize = require('harmonizer');
+var harmonize = require('harmonizer').transform;
 
 var esprima = require('esprima');
 var escodegen = require('escodegen');

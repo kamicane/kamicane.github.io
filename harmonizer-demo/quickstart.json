@@ -1,5 +1,7 @@
 {
-  "plugins": [],
+  "transforms": [],
+  "parsers": {},
   "sourceMap": "./harmonizer-demo-compiled.map",
-  "output": "./harmonizer-demo-compiled.js"
+  "output": "./harmonizer-demo-compiled.js",
+  "defaultPath": "./node_path"
 }
