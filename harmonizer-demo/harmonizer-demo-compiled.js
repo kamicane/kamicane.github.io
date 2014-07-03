@@ -1,4 +1,4 @@
-/* compiled with quickstart@0.10.0-dev */(function (main, modules) {
+/* compiled with quickstart@1.0.1 */(function (main, modules) {
   'use strict';
   var cache = require.cache = {};
   function require(id) {
@@ -278,75 +278,6 @@
       loaded ? ready() : readys.push(ready);
       return null;
     };
-  },
-  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
-    'use strict';
-    var $ = require('../../../node_modules/elements/base.js');
-    require('../../../node_modules/elements/attributes.js');
-    require('../../../node_modules/elements/events.js');
-    require('../../../node_modules/elements/insertion.js');
-    require('../../../node_modules/elements/traversal.js');
-    require('../../../node_modules/elements/delegation.js');
-    module.exports = $;
-  },
-  '../../../node_modules/harmonizer/index.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpression = require('../../../node_modules/nodes/index.js');
-    var build = callExpression.build, nodes = callExpression.nodes;
-    var deshorthandify = require('../../../node_modules/harmonizer/transform/shorthands.js').default;
-    var arrowify = require('../../../node_modules/harmonizer/transform/arrow-functions.js').default;
-    var comprehendify = require('../../../node_modules/harmonizer/transform/comprehensions.js').default;
-    var forofify = require('../../../node_modules/harmonizer/transform/for-of.js').default;
-    var patternify = require('../../../node_modules/harmonizer/transform/patterns.js').default;
-    var defaultify = require('../../../node_modules/harmonizer/transform/default-params.js').default;
-    var classify = require('../../../node_modules/harmonizer/transform/classes.js').default;
-    var restify = require('../../../node_modules/harmonizer/transform/rest-param.js').default;
-    var spreadify = require('../../../node_modules/harmonizer/transform/spread.js').default;
-    var templateify = require('../../../node_modules/harmonizer/transform/template-literals.js').default;
-    var letify = require('../../../node_modules/harmonizer/transform/let-declarations.js').default;
-    var modulize = require('../../../node_modules/harmonizer/transform/modules.js').default;
-    function blockify(program) {
-      var statementBodies = [
-          '#IfStatement > alternate',
-          '#IfStatement > consequent',
-          '#ForStatement > body',
-          '#ForInStatement > body',
-          '#ForOfStatement > body',
-          '#WhileStatement > body',
-          '#DoWhileStatement > body'
-        ].map(function (selector) {
-          return selector + '[type!=BlockStatement]';
-        });
-      program.search(statementBodies).forEach(function (statement) {
-        var parentNode = statement.parentNode;
-        var key = parentNode.indexOf(statement);
-        parentNode[key] = new nodes.BlockStatement({ body: [statement] });
-      });
-      program.search('#ArrowFunctionExpression[expression=true]').forEach(function (node) {
-        node.expression = false;
-        node.body = new nodes.BlockStatement({ body: [new nodes.ReturnStatement({ argument: node.body })] });
-      });
-    }
-    function transform(tree) {
-      var program = build(tree);
-      blockify(program);
-      modulize(program);
-      deshorthandify(program);
-      arrowify(program);
-      comprehendify(program);
-      forofify(program);
-      patternify(program);
-      defaultify(program);
-      classify(program);
-      restify(program);
-      spreadify(program);
-      templateify(program);
-      letify(program);
-      return program.toJSON();
-    }
-    exports.transform = transform;
-    exports.default = transform;
-    ;
   },
   '../../../node_modules/esprima/esprima.js': function (require, module, exports, global) {
     (function (root, factory) {
@@ -1993,12 +1924,13 @@
             expression: expression
           };
         },
-        createMethodDefinition: function (propertyType, kind, key, value) {
+        createMethodDefinition: function (propertyType, kind, key, value, computed) {
           return {
             type: Syntax.MethodDefinition,
             key: key,
             value: value,
             kind: kind,
+            computed: computed,
             'static': propertyType === ClassPropertyType.static
           };
         },
@@ -3809,13 +3741,20 @@
         } else {
           propType = ClassPropertyType.prototype;
         }
+        var computed = false;
         if (match('*')) {
           lex();
-          return markerApply(marker, delegate.createMethodDefinition(propType, '', parseObjectPropertyKey(), parsePropertyMethodFunction({ generator: true })));
+          if (lookahead.value === '[')
+            computed = true;
+          return markerApply(marker, delegate.createMethodDefinition(propType, '', parseObjectPropertyKey(), parsePropertyMethodFunction({ generator: true }), computed));
         }
         token = lookahead;
+        if (token.value === '[')
+          computed = true;
         key = parseObjectPropertyKey();
         if (token.value === 'get' && !match('(')) {
+          if (lookahead.value === '[')
+            computed = true;
           key = parseObjectPropertyKey();
           if (existingPropNames[propType].hasOwnProperty(key.name)) {
             isValidDuplicateProp = existingPropNames[propType][key.name].get === undefined && existingPropNames[propType][key.name].data === undefined && existingPropNames[propType][key.name].set !== undefined;
@@ -3828,9 +3767,11 @@
           existingPropNames[propType][key.name].get = true;
           expect('(');
           expect(')');
-          return markerApply(marker, delegate.createMethodDefinition(propType, 'get', key, parsePropertyFunction({ generator: false })));
+          return markerApply(marker, delegate.createMethodDefinition(propType, 'get', key, parsePropertyFunction({ generator: false }), computed));
         }
         if (token.value === 'set' && !match('(')) {
+          if (lookahead.value === '[')
+            computed = true;
           key = parseObjectPropertyKey();
           if (existingPropNames[propType].hasOwnProperty(key.name)) {
             isValidDuplicateProp = existingPropNames[propType][key.name].set === undefined && existingPropNames[propType][key.name].data === undefined && existingPropNames[propType][key.name].get !== undefined;
@@ -3849,7 +3790,7 @@
             params: param,
             generator: false,
             name: token
-          })));
+          }), computed));
         }
         if (existingPropNames[propType].hasOwnProperty(key.name)) {
           throwError(key, Messages.IllegalDuplicateClassProperty);
@@ -3857,7 +3798,7 @@
           existingPropNames[propType][key.name] = {};
         }
         existingPropNames[propType][key.name].data = true;
-        return markerApply(marker, delegate.createMethodDefinition(propType, '', key, parsePropertyMethodFunction({ generator: false })));
+        return markerApply(marker, delegate.createMethodDefinition(propType, '', key, parsePropertyMethodFunction({ generator: false }), computed));
       }
       function parseClassElement(existingProps) {
         if (match(';')) {
@@ -4452,6 +4393,98 @@
         return types;
       }();
     }));
+  },
+  '../../../node_modules/harmonizer/index.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpression = require('../../../node_modules/nodes/index.js');
+    var build = callExpression.build, nodes = callExpression.nodes;
+    var deshorthandify = require('../../../node_modules/harmonizer/transform/shorthands.js').default;
+    var arrowify = require('../../../node_modules/harmonizer/transform/arrow-functions.js').default;
+    var comprehendify = require('../../../node_modules/harmonizer/transform/comprehensions.js').default;
+    var forofify = require('../../../node_modules/harmonizer/transform/for-of.js').default;
+    var patternify = require('../../../node_modules/harmonizer/transform/patterns.js').default;
+    var defaultify = require('../../../node_modules/harmonizer/transform/default-params.js').default;
+    var classify = require('../../../node_modules/harmonizer/transform/classes.js').default;
+    var restify = require('../../../node_modules/harmonizer/transform/rest-param.js').default;
+    var spreadify = require('../../../node_modules/harmonizer/transform/spread.js').default;
+    var templateify = require('../../../node_modules/harmonizer/transform/template-literals.js').default;
+    var letify = require('../../../node_modules/harmonizer/transform/let-declarations.js').default;
+    var modulize = require('../../../node_modules/harmonizer/transform/modules.js').default;
+    var computify = require('../../../node_modules/harmonizer/transform/computed-properties.js').default;
+    function transform(tree) {
+      var program = build(tree);
+      modulize(program);
+      deshorthandify(program);
+      arrowify(program);
+      comprehendify(program);
+      forofify(program);
+      patternify(program);
+      defaultify(program);
+      classify(program);
+      computify(program);
+      restify(program);
+      spreadify(program);
+      templateify(program);
+      letify(program);
+      return program.toJSON();
+    }
+    exports.transform = transform;
+    exports.default = transform;
+    ;
+  },
+  '../../../node_modules/elements/index.js': function (require, module, exports, global) {
+    'use strict';
+    var $ = require('../../../node_modules/elements/base.js');
+    require('../../../node_modules/elements/attributes.js');
+    require('../../../node_modules/elements/events.js');
+    require('../../../node_modules/elements/insertion.js');
+    require('../../../node_modules/elements/traversal.js');
+    require('../../../node_modules/elements/delegation.js');
+    module.exports = $;
+  },
+  '../../../node_modules/tosource/tosource.js': function (require, module, exports, global) {
+    module.exports = function (object, filter, indent, startingIndent) {
+      var seen = [];
+      return walk(object, filter, indent === undefined ? '  ' : indent || '', startingIndent || '', seen);
+      function walk(object, filter, indent, currentIndent, seen) {
+        var nextIndent = currentIndent + indent;
+        object = filter ? filter(object) : object;
+        switch (typeof object) {
+        case 'string':
+          return JSON.stringify(object);
+        case 'boolean':
+        case 'number':
+        case 'function':
+        case 'undefined':
+          return '' + object;
+        }
+        if (object === null)
+          return 'null';
+        if (object instanceof RegExp)
+          return object.toString();
+        if (object instanceof Date)
+          return 'new Date(' + object.getTime() + ')';
+        if (seen.indexOf(object) >= 0)
+          return '{$circularReference:1}';
+        seen.push(object);
+        function join(elements) {
+          return indent.slice(1) + elements.join(',' + (indent && '\n') + nextIndent) + (indent ? ' ' : '');
+        }
+        if (Array.isArray(object)) {
+          return '[' + join(object.map(function (element) {
+            return walk(element, filter, indent, nextIndent, seen.slice());
+          })) + ']';
+        }
+        var keys = Object.keys(object);
+        return keys.length ? '{' + join(keys.map(function (key) {
+          return (legalKey(key) ? key : JSON.stringify(key)) + ':' + walk(object[key], filter, indent, nextIndent, seen.slice());
+        })) + '}' : '{}';
+      }
+    };
+    var KEYWORD_REGEXP = /^(abstract|boolean|break|byte|case|catch|char|class|const|continue|debugger|default|delete|do|double|else|enum|export|extends|false|final|finally|float|for|function|goto|if|implements|import|in|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|super|switch|synchronized|this|throw|throws|transient|true|try|typeof|undefined|var|void|volatile|while|with)$/;
+    function legalKey(string) {
+      return /^[a-z_$][0-9a-z_$]*$/gi.test(string) && !KEYWORD_REGEXP.test(string);
+    }
   },
   '../../../node_modules/escodegen/escodegen.js': function (require, module, exports, global) {
     (function () {
@@ -6398,50 +6431,6 @@
       exports.FORMAT_DEFAULTS = FORMAT_DEFAULTS;
     }());
   },
-  '../../../node_modules/tosource/tosource.js': function (require, module, exports, global) {
-    module.exports = function (object, filter, indent, startingIndent) {
-      var seen = [];
-      return walk(object, filter, indent === undefined ? '  ' : indent || '', startingIndent || '', seen);
-      function walk(object, filter, indent, currentIndent, seen) {
-        var nextIndent = currentIndent + indent;
-        object = filter ? filter(object) : object;
-        switch (typeof object) {
-        case 'string':
-          return JSON.stringify(object);
-        case 'boolean':
-        case 'number':
-        case 'function':
-        case 'undefined':
-          return '' + object;
-        }
-        if (object === null)
-          return 'null';
-        if (object instanceof RegExp)
-          return object.toString();
-        if (object instanceof Date)
-          return 'new Date(' + object.getTime() + ')';
-        if (seen.indexOf(object) >= 0)
-          return '{$circularReference:1}';
-        seen.push(object);
-        function join(elements) {
-          return indent.slice(1) + elements.join(',' + (indent && '\n') + nextIndent) + (indent ? ' ' : '');
-        }
-        if (Array.isArray(object)) {
-          return '[' + join(object.map(function (element) {
-            return walk(element, filter, indent, nextIndent, seen.slice());
-          })) + ']';
-        }
-        var keys = Object.keys(object);
-        return keys.length ? '{' + join(keys.map(function (key) {
-          return (legalKey(key) ? key : JSON.stringify(key)) + ':' + walk(object[key], filter, indent, nextIndent, seen.slice());
-        })) + '}' : '{}';
-      }
-    };
-    var KEYWORD_REGEXP = /^(abstract|boolean|break|byte|case|catch|char|class|const|continue|debugger|default|delete|do|double|else|enum|export|extends|false|final|finally|float|for|function|goto|if|implements|import|in|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|super|switch|synchronized|this|throw|throws|transient|true|try|typeof|undefined|var|void|volatile|while|with)$/;
-    function legalKey(string) {
-      return /^[a-z_$][0-9a-z_$]*$/gi.test(string) && !KEYWORD_REGEXP.test(string);
-    }
-  },
   '../../../node_modules/es6-util/class/create.js': function (require, module, exports, global) {
     'use strict';
     var callExpression = require('../../../node_modules/es6-util/class/descriptors.js');
@@ -7018,22 +7007,24 @@
     var callExpression = require('../../../node_modules/harmonizer/util/id.js');
     var createUniqueDeclaration = callExpression.createUniqueDeclaration;
     exports.default = function arrowify(program) {
-      var q = [
-          '#ArrowFunctionExpression => #ThisExpression',
-          '#ArrowFunctionExpression => #Identifier:reference[name=arguments]'
-        ];
-      program.search(q).forEach(function (expression) {
-        var arrowFunction = expression.scope();
-        var arrowScope = arrowFunction.scope('[type!=ArrowFunctionExpression]');
-        var id;
-        if (expression.type === syntax.ThisExpression) {
-          id = createUniqueDeclaration(arrowScope, 'self', 'this');
-        } else {
-          id = createUniqueDeclaration(arrowScope, 'parameters', 'arguments');
+      var arrowFunctions = program.search('#ArrowFunctionExpression');
+      arrowFunctions.forEach(function (node) {
+        if (node.expression) {
+          node.expression = false;
+          node.body = new nodes.BlockStatement({ body: [new nodes.ReturnStatement({ argument: node.body })] });
         }
-        expression.parentNode.replaceChild(expression, id);
+        var arrowScope = node.scope('[type!=ArrowFunctionExpression]');
+        node.search('=> #ThisExpression, => #Identifier:reference[name=arguments]').forEach(function (expression) {
+          var id;
+          if (expression.type === syntax.ThisExpression) {
+            id = createUniqueDeclaration(arrowScope, 'self', 'this');
+          } else {
+            id = createUniqueDeclaration(arrowScope, 'parameters', 'arguments');
+          }
+          expression.parentNode.replaceChild(expression, id);
+        });
       });
-      program.search('#ArrowFunctionExpression').forEach(function (node) {
+      arrowFunctions.forEach(function (node) {
         var shallow = new nodes.FunctionExpression(node);
         node.parentNode.replaceChild(node, shallow);
       });
@@ -7121,6 +7112,9 @@
         var left = node.left;
         var iteratorId = getUniqueId(node.scope(), 'iterator');
         var stepId = getUniqueId(node.scope(), 'step');
+        if (node.body.type !== syntax.BlockStatement) {
+          node.body = new nodes.BlockStatement({ body: [node.body] });
+        }
         forStatement.body = node.body;
         var iteratorOfId = createUniqueDeclaration(program, 'iteratorOf', 'require("es6-util/iterator/get").default');
         var init = express(iteratorOfId.name + '()').expression;
@@ -7273,7 +7267,7 @@
             valueId = declarator.init;
           } else {
             valueId = getUniqueId(declarations.scope(), lower(declarator.init.type));
-            var valueDeclaration = express('var ' + valueId.name + ' = $');
+            var valueDeclaration = express('var ' + valueId.name);
             valueDeclaration.declarations[0].init = declarator.init;
             insertBefore(declarations, valueDeclaration);
           }
@@ -7301,7 +7295,7 @@
           valueId = right;
         } else {
           valueId = getUniqueId(sequence.scope(), lower(right.type));
-          var declaration = express('var ' + valueId.name + ' = $');
+          var declaration = express('var ' + valueId.name);
           declaration.declarations[0].init = right;
           insertBefore(sequence, declaration);
         }
@@ -7358,6 +7352,9 @@
     var callExpressionA = require('../../../node_modules/harmonizer/util/id.js');
     var getUniqueId = callExpressionA.getUniqueId, createUniqueDeclaration = callExpressionA.createUniqueDeclaration;
     exports.default = function classify(program) {
+      var getGPOName = function () {
+        return createUniqueDeclaration(program, 'getPrototypeOf', 'Object.getPrototypeOf').name;
+      };
       program.search('#Class').forEach(function (node) {
         var definitions = node.body.body;
         if (!node.id && node.parentNode.type === syntax.VariableDeclarator) {
@@ -7367,15 +7364,13 @@
           node.id = getUniqueId(node, 'Class');
         }
         var name = node.id.name;
-        var getPrototypeOfNamePrototype = 'Object.getPrototypeOf(' + name + '.prototype)';
-        var getPrototypeOfName = 'Object.getPrototypeOf(' + name + ')';
         var createClassId = createUniqueDeclaration(program, 'createClass', 'require("es6-util/class/create").default');
         var superClass = node.superClass;
         var constructorMethod = !!definitions.search('> #MethodDefinition > key[name=constructor]').length;
         if (!constructorMethod) {
           definitions.unshift(new nodes.MethodDefinition({
             key: new nodes.Identifier({ name: 'constructor' }),
-            value: express('(function () {\n        var proto = ' + getPrototypeOfNamePrototype + ';\n        if (proto !== null) proto.constructor.apply(this, arguments);\n      })').expression
+            value: express('(function () {\n        var proto = ' + getGPOName() + '(' + name + '.prototype);\n        if (proto !== null) proto.constructor.apply(this, arguments);\n      })').expression
           }));
         }
         var q = [
@@ -7393,7 +7388,7 @@
             callExpression = parentNode;
             methodName = definition.key.name;
           }
-          var superMethodXp = definition.static ? express(getPrototypeOfName + '.' + methodName).expression : express(getPrototypeOfNamePrototype + '.' + methodName).expression;
+          var superMethodXp = definition.static ? express(getGPOName() + '(' + name + ').' + methodName).expression : express(getGPOName() + '(' + name + '.prototype).' + methodName).expression;
           var selfId;
           var definitionFunction = definition.value;
           selfId = id.scope() !== definitionFunction ? createUniqueDeclaration(definitionFunction, 'self', 'this') : new nodes.ThisExpression();
@@ -7413,7 +7408,8 @@
           (definition.static ? members : prototype).properties.push(new nodes.Property({
             key: definition.key,
             value: definition.value,
-            kind: definition.kind || 'init'
+            kind: definition.kind || 'init',
+            computed: definition.computed
           }));
         });
         var createClassExpression = express(createClassId.name + '()');
@@ -7729,6 +7725,46 @@
       });
     };
   },
+  '../../../node_modules/harmonizer/transform/computed-properties.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpressionB = require('../../../node_modules/harmonizer/util/id.js');
+    var getUniqueName = callExpressionB.getUniqueName, createUniqueDeclaration = callExpressionB.createUniqueDeclaration;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/insertion.js');
+    var insertBefore = callExpressionA.insertBefore, insertAfter = callExpressionA.insertAfter;
+    var callExpression = require('../../../node_modules/harmonizer/util/string.js');
+    var express = callExpression.express;
+    exports.default = function computify(program) {
+      var getDPName = function () {
+        return createUniqueDeclaration(program, 'defineProperty', 'Object.defineProperty').name;
+      };
+      program.search('#Property[computed=true] < * < *').forEach(function (node) {
+        var scope = node.scope();
+        var parentNode = node.parentNode;
+        var objectName = getUniqueName(scope, 'objectExpression');
+        var declaration = express('var ' + objectName);
+        insertBefore(node, declaration);
+        parentNode.replaceChild(node, declaration.declarations[0].id.clone());
+        declaration.declarations[0].init = node;
+        node.properties.forEachRight(function (property, i) {
+          if (property.computed) {
+            if (property.kind === 'init') {
+              var assignmentExpression = express(objectName + '[$] = $');
+              assignmentExpression.expression.left.property = property.key;
+              assignmentExpression.expression.right = property.value;
+              insertAfter(declaration, assignmentExpression);
+            } else {
+              var definitionExpression = express(getDPName() + '(' + objectName + ', $, {\n            ' + property.kind + ': $,\n            configurable: true,\n            enumerable: true\n          })');
+              var args = definitionExpression.expression.arguments;
+              args.splice(1, 1, property.key);
+              args[2].properties[0].value = property.value;
+              insertAfter(declaration, definitionExpression);
+            }
+            node.properties.splice(i, 1);
+          }
+        });
+      });
+    };
+  },
   '../../../node_modules/es6-util/class/descriptors.js': function (require, module, exports, global) {
     'use strict';
     var keys = Object.keys, getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
@@ -7897,59 +7933,6 @@
       exports.keyword = require('../../../node_modules/escodegen/node_modules/esutils/lib/keyword.js');
     }());
   },
-  '../../../node_modules/prime/emitter.js': function (require, module, exports, global) {
-    'use strict';
-    var indexOf = require('../../../node_modules/mout/array/indexOf.js'), forEach = require('../../../node_modules/mout/array/forEach.js');
-    var prime = require('../../../node_modules/prime/index.js'), defer = require('../../../node_modules/prime/defer.js');
-    var slice = Array.prototype.slice;
-    var Emitter = prime({
-        constructor: function (stoppable) {
-          this._stoppable = stoppable;
-        },
-        on: function (event, fn) {
-          var listeners = this._listeners || (this._listeners = {}), events = listeners[event] || (listeners[event] = []);
-          if (indexOf(events, fn) === -1)
-            events.push(fn);
-          return this;
-        },
-        off: function (event, fn) {
-          var listeners = this._listeners, events;
-          if (listeners && (events = listeners[event])) {
-            var io = indexOf(events, fn);
-            if (io > -1)
-              events.splice(io, 1);
-            if (!events.length)
-              delete listeners[event];
-            for (var l in listeners)
-              return this;
-            delete this._listeners;
-          }
-          return this;
-        },
-        emit: function (event) {
-          var self = this, args = slice.call(arguments, 1);
-          var emit = function () {
-            var listeners = self._listeners, events;
-            if (listeners && (events = listeners[event])) {
-              forEach(events.slice(0), function (event) {
-                var result = event.apply(self, args);
-                if (self._stoppable)
-                  return result;
-              });
-            }
-          };
-          if (args[args.length - 1] === Emitter.EMIT_SYNC) {
-            args.pop();
-            emit();
-          } else {
-            defer(emit);
-          }
-          return this;
-        }
-      });
-    Emitter.EMIT_SYNC = {};
-    module.exports = Emitter;
-  },
   '../../../node_modules/prime/map.js': function (require, module, exports, global) {
     'use strict';
     var indexOf = require('../../../node_modules/mout/array/indexOf.js');
@@ -8051,6 +8034,72 @@
     map.prototype = Map.prototype;
     module.exports = map;
   },
+  '../../../node_modules/prime/emitter.js': function (require, module, exports, global) {
+    'use strict';
+    var indexOf = require('../../../node_modules/mout/array/indexOf.js'), forEach = require('../../../node_modules/mout/array/forEach.js');
+    var prime = require('../../../node_modules/prime/index.js'), defer = require('../../../node_modules/prime/defer.js');
+    var slice = Array.prototype.slice;
+    var Emitter = prime({
+        constructor: function (stoppable) {
+          this._stoppable = stoppable;
+        },
+        on: function (event, fn) {
+          var listeners = this._listeners || (this._listeners = {}), events = listeners[event] || (listeners[event] = []);
+          if (indexOf(events, fn) === -1)
+            events.push(fn);
+          return this;
+        },
+        off: function (event, fn) {
+          var listeners = this._listeners, events;
+          if (listeners && (events = listeners[event])) {
+            var io = indexOf(events, fn);
+            if (io > -1)
+              events.splice(io, 1);
+            if (!events.length)
+              delete listeners[event];
+            for (var l in listeners)
+              return this;
+            delete this._listeners;
+          }
+          return this;
+        },
+        emit: function (event) {
+          var self = this, args = slice.call(arguments, 1);
+          var emit = function () {
+            var listeners = self._listeners, events;
+            if (listeners && (events = listeners[event])) {
+              forEach(events.slice(0), function (event) {
+                var result = event.apply(self, args);
+                if (self._stoppable)
+                  return result;
+              });
+            }
+          };
+          if (args[args.length - 1] === Emitter.EMIT_SYNC) {
+            args.pop();
+            emit();
+          } else {
+            defer(emit);
+          }
+          return this;
+        }
+      });
+    Emitter.EMIT_SYNC = {};
+    module.exports = Emitter;
+  },
+  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
+    'use strict';
+    require('../../../node_modules/nodes/lib/finder.js');
+    var types = require('../../../node_modules/nodes/types.js');
+    var factory = require('../../../node_modules/nodes/lib/factory.js');
+    var syntax = require('../../../node_modules/nodes/syntax.json');
+    var build = factory.build;
+    var lists = factory.lists;
+    exports.default = exports.build = build;
+    exports.syntax = syntax;
+    exports.nodes = types;
+    exports.lists = lists;
+  },
   '../../../node_modules/prime/index.js': function (require, module, exports, global) {
     'use strict';
     var hasOwn = require('../../../node_modules/mout/object/hasOwn.js'), mixIn = require('../../../node_modules/mout/object/mixIn.js'), create = require('../../../node_modules/mout/lang/createObject.js'), kindOf = require('../../../node_modules/mout/lang/kindOf.js');
@@ -8115,6 +8164,125 @@
       return constructor.implement(proto);
     };
     module.exports = prime;
+  },
+  '../../../node_modules/harmonizer/util/id.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpressionB = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpressionB.nodes;
+    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
+    var express = callExpressionA.express;
+    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
+    var insertAfterStrict = callExpression.insertAfterStrict;
+    var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    var letter = function (i) {
+      if (i <= 25) {
+        return letters[i];
+      }
+      return letter(Math.floor(i / 26) - 1) + letters[i % 26];
+    };
+    var getUniqueName = function (node, name) {
+      var names = node.search('#Identifier:declaration > name, #Identifier:reference > name');
+      var preferred = name, i = 0;
+      while (~names.indexOf(name)) {
+        name = preferred + letter(i++) + '';
+      }
+      return name;
+    };
+    exports.getUniqueName = getUniqueName;
+    var getUniqueId = function (node, name) {
+      name = getUniqueName(node, name);
+      return new nodes.Identifier({ name: name });
+    };
+    exports.getUniqueId = getUniqueId;
+    var createUniqueDeclaration = function (node, name, expression) {
+      var id = '@@' + name;
+      if (!node[id]) {
+        var uniqueName = getUniqueName(node, name);
+        var declaration = express('var ' + uniqueName + ' = ' + expression);
+        insertAfterStrict(node, declaration);
+        node[id] = declaration.declarations[0].id;
+      }
+      return node[id].clone();
+    };
+    exports.createUniqueDeclaration = createUniqueDeclaration;
+  },
+  '../../../node_modules/harmonizer/util/string.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpressionA = require('../../../node_modules/nodes/index.js');
+    var build = callExpressionA.build;
+    var callExpression = require('../../../node_modules/esprima/esprima.js');
+    var parse = callExpression.parse;
+    var express = function (string) {
+      return build(parse(string).body[0]);
+    };
+    exports.express = express;
+    var upper = function (string) {
+      return string.replace(/^[a-z]/, function (a) {
+        return a.toUpperCase();
+      });
+    };
+    exports.upper = upper;
+    var lower = function (string) {
+      return string.replace(/^[A-Z]/, function (a) {
+        return a.toLowerCase();
+      });
+    };
+    exports.lower = lower;
+  },
+  '../../../node_modules/harmonizer/util/insertion.js': function (require, module, exports, global) {
+    'use strict';
+    var callExpression = require('../../../node_modules/nodes/index.js');
+    var nodes = callExpression.nodes, lists = callExpression.lists;
+    var List = lists.List;
+    var listIndex = function (node) {
+      var lastNode = node, firstList;
+      while (node = node.parentNode) {
+        var ancestor = node.parentNode;
+        if (node instanceof List && (ancestor.body === node || ancestor.consequent === node)) {
+          firstList = node;
+          break;
+        } else {
+          if (ancestor.consequent === node || ancestor.alternate === node || ancestor.body === node) {
+            var key = ancestor.indexOf(node);
+            ancestor[key] = new nodes.BlockStatement({ body: [node] });
+          } else {
+            lastNode = node;
+          }
+        }
+      }
+      if (!firstList) {
+        throw new Error('parent list not found');
+      }
+      return [
+        firstList,
+        firstList.indexOf(lastNode)
+      ];
+    };
+    var insertBefore = function (node, node2) {
+      var callExpression = listIndex(node);
+      var list = callExpression[0], index = callExpression[1];
+      list.splice(index, 0, node2);
+      return node2;
+    };
+    exports.insertBefore = insertBefore;
+    var insertAfter = function (node, node2) {
+      var callExpression = listIndex(node);
+      var list = callExpression[0], index = callExpression[1];
+      list.splice(index + 1, 0, node2);
+      return node2;
+    };
+    exports.insertAfter = insertAfter;
+    var insertAfterStrict = function (parentNode, node) {
+      var body = nodes.Function.test(parentNode) ? parentNode.body.body : parentNode.body;
+      var firstChild = body[0];
+      if (firstChild && firstChild.matches('#ExpressionStatement > expression#Literal[value=use strict] < *')) {
+        body.splice(1, 0, node);
+      } else {
+        body.unshift(node);
+      }
+      return node;
+    };
+    exports.insertAfterStrict = insertAfterStrict;
   },
   '../../../node_modules/mout/array/forEach.js': function (require, module, exports, global) {
     function forEach(arr, callback, thisObj) {
@@ -8219,130 +8387,6 @@
       return -1;
     }
     module.exports = indexOf;
-  },
-  '../../../node_modules/nodes/index.js': function (require, module, exports, global) {
-    'use strict';
-    require('../../../node_modules/nodes/lib/finder.js');
-    var types = require('../../../node_modules/nodes/types.js');
-    var factory = require('../../../node_modules/nodes/lib/factory.js');
-    var syntax = require('../../../node_modules/nodes/syntax.json');
-    var build = factory.build;
-    var lists = factory.lists;
-    exports.default = exports.build = build;
-    exports.syntax = syntax;
-    exports.nodes = types;
-    exports.lists = lists;
-  },
-  '../../../node_modules/harmonizer/util/string.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionA = require('../../../node_modules/nodes/index.js');
-    var build = callExpressionA.build;
-    var callExpression = require('../../../node_modules/esprima/esprima.js');
-    var parse = callExpression.parse;
-    var express = function (string) {
-      return build(parse(string).body[0]);
-    };
-    exports.express = express;
-    var upper = function (string) {
-      return string.replace(/^[a-z]/, function (a) {
-        return a.toUpperCase();
-      });
-    };
-    exports.upper = upper;
-    var lower = function (string) {
-      return string.replace(/^[A-Z]/, function (a) {
-        return a.toLowerCase();
-      });
-    };
-    exports.lower = lower;
-  },
-  '../../../node_modules/harmonizer/util/id.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpressionB = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpressionB.nodes;
-    var callExpressionA = require('../../../node_modules/harmonizer/util/string.js');
-    var express = callExpressionA.express;
-    var callExpression = require('../../../node_modules/harmonizer/util/insertion.js');
-    var insertAfterStrict = callExpression.insertAfterStrict;
-    var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    var letter = function (i) {
-      if (i <= 25) {
-        return letters[i];
-      }
-      return letter(Math.floor(i / 26) - 1) + letters[i % 26];
-    };
-    var getUniqueName = function (node, name) {
-      var names = node.search('#Identifier:declaration > name, #Identifier:reference > name');
-      var preferred = name, i = 0;
-      while (~names.indexOf(name)) {
-        name = preferred + letter(i++) + '';
-      }
-      return name;
-    };
-    exports.getUniqueName = getUniqueName;
-    var getUniqueId = function (node, name) {
-      name = getUniqueName(node, name);
-      return new nodes.Identifier({ name: name });
-    };
-    exports.getUniqueId = getUniqueId;
-    var createUniqueDeclaration = function (node, name, expression) {
-      var id = '@@' + name;
-      if (!node[id]) {
-        var uniqueName = getUniqueName(node, name);
-        var declaration = express('var ' + uniqueName + ' = ' + expression);
-        insertAfterStrict(node, declaration);
-        node[id] = declaration.declarations[0].id;
-      }
-      return node[id].clone();
-    };
-    exports.createUniqueDeclaration = createUniqueDeclaration;
-  },
-  '../../../node_modules/harmonizer/util/insertion.js': function (require, module, exports, global) {
-    'use strict';
-    var callExpression = require('../../../node_modules/nodes/index.js');
-    var nodes = callExpression.nodes, lists = callExpression.lists;
-    var List = lists.List;
-    var listIndex = function (node) {
-      var lastNode = node, firstList;
-      while (node = node.parentNode) {
-        if (node instanceof List && node.parentNode.body === node) {
-          firstList = node;
-          break;
-        } else {
-          lastNode = node;
-        }
-      }
-      if (!firstList) {
-        throw new Error('parent list not found');
-      }
-      return {
-        list: firstList,
-        index: firstList.indexOf(lastNode)
-      };
-    };
-    var insertBefore = function (node, node2) {
-      var li = listIndex(node);
-      li.list.splice(li.index, 0, node2);
-      return node2;
-    };
-    exports.insertBefore = insertBefore;
-    var insertAfter = function (node, node2) {
-      var li = listIndex(node);
-      li.list.splice(li.index + 1, 0, node2);
-      return node2;
-    };
-    exports.insertAfter = insertAfter;
-    var insertAfterStrict = function (parentNode, node) {
-      var body = nodes.Function.test(parentNode) ? parentNode.body.body : parentNode.body;
-      var firstChild = body[0];
-      if (firstChild && firstChild.matches('#ExpressionStatement > expression#Literal[value=use strict] < *')) {
-        body.splice(1, 0, node);
-      } else {
-        body.unshift(node);
-      }
-      return node;
-    };
-    exports.insertAfterStrict = insertAfterStrict;
   },
   '../../../node_modules/estraverse/estraverse.js': function (require, module, exports, global) {
     (function (root, factory) {
@@ -8956,6 +9000,13 @@
       exports.Controller = Controller;
     }));
   },
+  '../../../node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
+    var isKind = require('../../../node_modules/mout/lang/isKind.js');
+    function isNumber(val) {
+      return isKind(val, 'Number');
+    }
+    module.exports = isNumber;
+  },
   '../../../node_modules/es6-util/iterator/create.js': function (require, module, exports, global) {
     'use strict';
     var getIteratorSymbol = require('../../../node_modules/es6-util/iterator/symbol.js').default;
@@ -8966,13 +9017,6 @@
       };
       return it;
     };
-  },
-  '../../../node_modules/mout/lang/isNumber.js': function (require, module, exports, global) {
-    var isKind = require('../../../node_modules/mout/lang/isKind.js');
-    function isNumber(val) {
-      return isKind(val, 'Number');
-    }
-    module.exports = isNumber;
   },
   '../../../node_modules/mout/lang/kindOf.js': function (require, module, exports, global) {
     var _rKind = /^\[object (.*)\]$/, _toString = Object.prototype.toString, UNDEF;
@@ -9012,20 +9056,6 @@
       return +new Date();
     };
     module.exports = now;
-  },
-  '../../../node_modules/mout/lang/createObject.js': function (require, module, exports, global) {
-    var mixIn = require('../../../node_modules/mout/object/mixIn.js');
-    function createObject(parent, props) {
-      function F() {
-      }
-      F.prototype = parent;
-      return mixIn(new F(), props);
-    }
-    module.exports = createObject;
-  },
-  '../../../node_modules/slick/index.js': function (require, module, exports, global) {
-    'use strict';
-    module.exports = 'document' in global ? require('../../../node_modules/slick/finder.js') : { parse: require('../../../node_modules/slick/parser.js') };
   },
   '../../../node_modules/nodes/types.js': function (require, module, exports, global) {
     'use strict';
@@ -9079,11 +9109,12 @@
       });
     var Property = describe(Node, {
         type: syntax.Property,
-        key: expect(Literal, Identifier),
+        key: Expression,
         value: expect(Pattern, Expression),
         kind: /^(init|get|set)$/,
         shorthand: expect(boolean).default(false),
-        method: expect(boolean).default(false)
+        method: expect(boolean).default(false),
+        computed: expect(boolean).default(false)
       });
     var ObjectPattern = describe(Node, {
         type: syntax.ObjectPattern,
@@ -9328,10 +9359,11 @@
       };
     var MethodDefinition = describe(Node, {
         type: syntax.MethodDefinition,
-        key: Identifier,
+        key: Expression,
         value: FunctionExpression,
         kind: expect(string).default(''),
-        static: expect(boolean).default(false)
+        static: expect(boolean).default(false),
+        computed: expect(boolean).default(false)
       });
     var ClassBody = describe(Expression, {
         type: syntax.ClassBody,
@@ -9457,6 +9489,16 @@
       'WithStatement': 'WithStatement',
       'YieldExpression': 'YieldExpression'
     };
+  },
+  '../../../node_modules/mout/lang/createObject.js': function (require, module, exports, global) {
+    var mixIn = require('../../../node_modules/mout/object/mixIn.js');
+    function createObject(parent, props) {
+      function F() {
+      }
+      F.prototype = parent;
+      return mixIn(new F(), props);
+    }
+    module.exports = createObject;
   },
   '../../../node_modules/escodegen/node_modules/esutils/lib/code.js': function (require, module, exports, global) {
     (function () {
@@ -9594,140 +9636,16 @@
       };
     }());
   },
+  '../../../node_modules/slick/index.js': function (require, module, exports, global) {
+    'use strict';
+    module.exports = 'document' in global ? require('../../../node_modules/slick/finder.js') : { parse: require('../../../node_modules/slick/parser.js') };
+  },
   '../../../node_modules/mout/lang/isKind.js': function (require, module, exports, global) {
     var kindOf = require('../../../node_modules/mout/lang/kindOf.js');
     function isKind(val, kind) {
       return kindOf(val) === kind;
     }
     module.exports = isKind;
-  },
-  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
-    function hasOwn(obj, prop) {
-      return Object.prototype.hasOwnProperty.call(obj, prop);
-    }
-    module.exports = hasOwn;
-  },
-  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
-    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
-    function mixIn(target, objects) {
-      var i = 0, n = arguments.length, obj;
-      while (++i < n) {
-        obj = arguments[i];
-        if (obj != null) {
-          forOwn(obj, copyProp, target);
-        }
-      }
-      return target;
-    }
-    function copyProp(val, key) {
-      this[key] = val;
-    }
-    module.exports = mixIn;
-  },
-  '../../../node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
-    var identity = require('../../../node_modules/mout/function/identity.js');
-    var prop = require('../../../node_modules/mout/function/prop.js');
-    var deepMatches = require('../../../node_modules/mout/object/deepMatches.js');
-    function makeIterator(src, thisObj) {
-      if (src == null) {
-        return identity;
-      }
-      switch (typeof src) {
-      case 'function':
-        return typeof thisObj !== 'undefined' ? function (val, i, arr) {
-          return src.call(thisObj, val, i, arr);
-        } : src;
-      case 'object':
-        return function (val) {
-          return deepMatches(val, src);
-        };
-      case 'string':
-      case 'number':
-        return prop(src);
-      }
-    }
-    module.exports = makeIterator;
-  },
-  '../../../node_modules/mout/lang/toString.js': function (require, module, exports, global) {
-    function toString(val) {
-      return val == null ? '' : val.toString();
-    }
-    module.exports = toString;
-  },
-  '../../../node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
-    module.exports = [
-      ' ',
-      '\n',
-      '\r',
-      '\t',
-      '\f',
-      '\x0B',
-      '\xA0',
-      '\u1680',
-      '\u180E',
-      '\u2000',
-      '\u2001',
-      '\u2002',
-      '\u2003',
-      '\u2004',
-      '\u2005',
-      '\u2006',
-      '\u2007',
-      '\u2008',
-      '\u2009',
-      '\u200A',
-      '\u2028',
-      '\u2029',
-      '\u202F',
-      '\u205F',
-      '\u3000'
-    ];
-  },
-  '../../../node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
-    var toString = require('../../../node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
-    function ltrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
-      while (found && start < len) {
-        found = false;
-        i = -1;
-        c = str.charAt(start);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            start++;
-            break;
-          }
-        }
-      }
-      return start >= len ? '' : str.substr(start, len);
-    }
-    module.exports = ltrim;
-  },
-  '../../../node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
-    var toString = require('../../../node_modules/mout/lang/toString.js');
-    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
-    function rtrim(str, chars) {
-      str = toString(str);
-      chars = chars || WHITE_SPACES;
-      var end = str.length - 1, charLen = chars.length, found = true, i, c;
-      while (found && end >= 0) {
-        found = false;
-        i = -1;
-        c = str.charAt(end);
-        while (++i < charLen) {
-          if (c === chars[i]) {
-            found = true;
-            end--;
-            break;
-          }
-        }
-      }
-      return end >= 0 ? str.substring(0, end + 1) : '';
-    }
-    module.exports = rtrim;
   },
   '../../../node_modules/nodes/lib/finder.js': function (require, module, exports, global) {
     'use strict';
@@ -10557,6 +10475,134 @@
     exports.expect = expect;
     exports.build = build;
   },
+  '../../../node_modules/mout/object/hasOwn.js': function (require, module, exports, global) {
+    function hasOwn(obj, prop) {
+      return Object.prototype.hasOwnProperty.call(obj, prop);
+    }
+    module.exports = hasOwn;
+  },
+  '../../../node_modules/mout/object/mixIn.js': function (require, module, exports, global) {
+    var forOwn = require('../../../node_modules/mout/object/forOwn.js');
+    function mixIn(target, objects) {
+      var i = 0, n = arguments.length, obj;
+      while (++i < n) {
+        obj = arguments[i];
+        if (obj != null) {
+          forOwn(obj, copyProp, target);
+        }
+      }
+      return target;
+    }
+    function copyProp(val, key) {
+      this[key] = val;
+    }
+    module.exports = mixIn;
+  },
+  '../../../node_modules/mout/function/makeIterator_.js': function (require, module, exports, global) {
+    var identity = require('../../../node_modules/mout/function/identity.js');
+    var prop = require('../../../node_modules/mout/function/prop.js');
+    var deepMatches = require('../../../node_modules/mout/object/deepMatches.js');
+    function makeIterator(src, thisObj) {
+      if (src == null) {
+        return identity;
+      }
+      switch (typeof src) {
+      case 'function':
+        return typeof thisObj !== 'undefined' ? function (val, i, arr) {
+          return src.call(thisObj, val, i, arr);
+        } : src;
+      case 'object':
+        return function (val) {
+          return deepMatches(val, src);
+        };
+      case 'string':
+      case 'number':
+        return prop(src);
+      }
+    }
+    module.exports = makeIterator;
+  },
+  '../../../node_modules/mout/lang/toString.js': function (require, module, exports, global) {
+    function toString(val) {
+      return val == null ? '' : val.toString();
+    }
+    module.exports = toString;
+  },
+  '../../../node_modules/mout/string/WHITE_SPACES.js': function (require, module, exports, global) {
+    module.exports = [
+      ' ',
+      '\n',
+      '\r',
+      '\t',
+      '\f',
+      '\x0B',
+      '\xA0',
+      '\u1680',
+      '\u180E',
+      '\u2000',
+      '\u2001',
+      '\u2002',
+      '\u2003',
+      '\u2004',
+      '\u2005',
+      '\u2006',
+      '\u2007',
+      '\u2008',
+      '\u2009',
+      '\u200A',
+      '\u2028',
+      '\u2029',
+      '\u202F',
+      '\u205F',
+      '\u3000'
+    ];
+  },
+  '../../../node_modules/mout/string/ltrim.js': function (require, module, exports, global) {
+    var toString = require('../../../node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
+    function ltrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var start = 0, len = str.length, charLen = chars.length, found = true, i, c;
+      while (found && start < len) {
+        found = false;
+        i = -1;
+        c = str.charAt(start);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            start++;
+            break;
+          }
+        }
+      }
+      return start >= len ? '' : str.substr(start, len);
+    }
+    module.exports = ltrim;
+  },
+  '../../../node_modules/mout/string/rtrim.js': function (require, module, exports, global) {
+    var toString = require('../../../node_modules/mout/lang/toString.js');
+    var WHITE_SPACES = require('../../../node_modules/mout/string/WHITE_SPACES.js');
+    function rtrim(str, chars) {
+      str = toString(str);
+      chars = chars || WHITE_SPACES;
+      var end = str.length - 1, charLen = chars.length, found = true, i, c;
+      while (found && end >= 0) {
+        found = false;
+        i = -1;
+        c = str.charAt(end);
+        while (++i < charLen) {
+          if (c === chars[i]) {
+            found = true;
+            end--;
+            break;
+          }
+        }
+      }
+      return end >= 0 ? str.substring(0, end + 1) : '';
+    }
+    module.exports = rtrim;
+  },
   '../../../node_modules/source-map/lib/source-map/source-map-generator.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
       var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
@@ -11289,140 +11335,6 @@
       exports.SourceNode = SourceNode;
     });
   },
-  '../../../node_modules/slick/parser.js': function (require, module, exports, global) {
-    'use strict';
-    var escapeRe = /([-.*+?^${}()|[\]\/\\])/g, unescapeRe = /\\/g;
-    var escape = function (string) {
-      return (string + '').replace(escapeRe, '\\$1');
-    };
-    var unescape = function (string) {
-      return (string + '').replace(unescapeRe, '');
-    };
-    var slickRe = RegExp('^(?:\\s*(,)\\s*|\\s*(<combinator>+)\\s*|(\\s+)|(<unicode>+|\\*)|\\#(<unicode>+)|\\.(<unicode>+)|\\[\\s*(<unicode1>+)(?:\\s*([*^$!~|]?=)(?:\\s*(?:(["\']?)(.*?)\\9)))?\\s*\\](?!\\])|(:+)(<unicode>+)(?:\\((?:(?:(["\'])([^\\13]*)\\13)|((?:\\([^)]+\\)|[^()]*)+))\\))?)'.replace(/<combinator>/, '[' + escape('>+~`!@$%^&={}\\;</') + ']').replace(/<unicode>/g, '(?:[\\w\\u00a1-\\uFFFF-]|\\\\[^\\s0-9a-f])').replace(/<unicode1>/g, '(?:[:\\w\\u00a1-\\uFFFF-]|\\\\[^\\s0-9a-f])'));
-    var Part = function Part(combinator) {
-      this.combinator = combinator || ' ';
-      this.tag = '*';
-    };
-    Part.prototype.toString = function () {
-      if (!this.raw) {
-        var xpr = '', k, part;
-        xpr += this.tag || '*';
-        if (this.id)
-          xpr += '#' + this.id;
-        if (this.classes)
-          xpr += '.' + this.classList.join('.');
-        if (this.attributes)
-          for (k = 0; part = this.attributes[k++];) {
-            xpr += '[' + part.name + (part.operator ? part.operator + '"' + part.value + '"' : '') + ']';
-          }
-        if (this.pseudos)
-          for (k = 0; part = this.pseudos[k++];) {
-            xpr += ':' + part.name;
-            if (part.value)
-              xpr += '(' + part.value + ')';
-          }
-        this.raw = xpr;
-      }
-      return this.raw;
-    };
-    var Expression = function Expression() {
-      this.length = 0;
-    };
-    Expression.prototype.toString = function () {
-      if (!this.raw) {
-        var xpr = '';
-        for (var j = 0, bit; bit = this[j++];) {
-          if (j !== 1)
-            xpr += ' ';
-          if (bit.combinator !== ' ')
-            xpr += bit.combinator + ' ';
-          xpr += bit;
-        }
-        this.raw = xpr;
-      }
-      return this.raw;
-    };
-    var replacer = function (rawMatch, separator, combinator, combinatorChildren, tagName, id, className, attributeKey, attributeOperator, attributeQuote, attributeValue, pseudoMarker, pseudoClass, pseudoQuote, pseudoClassQuotedValue, pseudoClassValue) {
-      var expression, current;
-      if (separator || !this.length) {
-        expression = this[this.length++] = new Expression();
-        if (separator)
-          return '';
-      }
-      if (!expression)
-        expression = this[this.length - 1];
-      if (combinator || combinatorChildren || !expression.length) {
-        current = expression[expression.length++] = new Part(combinator);
-      }
-      if (!current)
-        current = expression[expression.length - 1];
-      if (tagName) {
-        current.tag = unescape(tagName);
-      } else if (id) {
-        current.id = unescape(id);
-      } else if (className) {
-        var unescaped = unescape(className);
-        var classes = current.classes || (current.classes = {});
-        if (!classes[unescaped]) {
-          classes[unescaped] = escape(className);
-          var classList = current.classList || (current.classList = []);
-          classList.push(unescaped);
-          classList.sort();
-        }
-      } else if (pseudoClass) {
-        pseudoClassValue = pseudoClassValue || pseudoClassQuotedValue;
-        ;
-        (current.pseudos || (current.pseudos = [])).push({
-          type: pseudoMarker.length == 1 ? 'class' : 'element',
-          name: unescape(pseudoClass),
-          escapedName: escape(pseudoClass),
-          value: pseudoClassValue ? unescape(pseudoClassValue) : null,
-          escapedValue: pseudoClassValue ? escape(pseudoClassValue) : null
-        });
-      } else if (attributeKey) {
-        attributeValue = attributeValue ? escape(attributeValue) : null;
-        ;
-        (current.attributes || (current.attributes = [])).push({
-          operator: attributeOperator,
-          name: unescape(attributeKey),
-          escapedName: escape(attributeKey),
-          value: attributeValue ? unescape(attributeValue) : null,
-          escapedValue: attributeValue ? escape(attributeValue) : null
-        });
-      }
-      return '';
-    };
-    var Expressions = function Expressions(expression) {
-      this.length = 0;
-      var self = this;
-      var original = expression, replaced;
-      while (expression) {
-        replaced = expression.replace(slickRe, function () {
-          return replacer.apply(self, arguments);
-        });
-        if (replaced === expression)
-          throw new Error(original + ' is an invalid expression');
-        expression = replaced;
-      }
-    };
-    Expressions.prototype.toString = function () {
-      if (!this.raw) {
-        var expressions = [];
-        for (var i = 0, expression; expression = this[i++];)
-          expressions.push(expression);
-        this.raw = expressions.join(', ');
-      }
-      return this.raw;
-    };
-    var cache = {};
-    var parse = function (expression) {
-      if (expression == null)
-        return null;
-      expression = ('' + expression).replace(/^\s+|\s+$/g, '');
-      return cache[expression] || (cache[expression] = new Expressions(expression));
-    };
-    module.exports = parse;
-  },
   '../../../node_modules/slick/finder.js': function (require, module, exports, global) {
     'use strict';
     var parse = require('../../../node_modules/slick/parser.js');
@@ -12015,6 +11927,172 @@
     slick.parse = parse;
     module.exports = slick;
   },
+  '../../../node_modules/slick/parser.js': function (require, module, exports, global) {
+    'use strict';
+    var escapeRe = /([-.*+?^${}()|[\]\/\\])/g, unescapeRe = /\\/g;
+    var escape = function (string) {
+      return (string + '').replace(escapeRe, '\\$1');
+    };
+    var unescape = function (string) {
+      return (string + '').replace(unescapeRe, '');
+    };
+    var slickRe = RegExp('^(?:\\s*(,)\\s*|\\s*(<combinator>+)\\s*|(\\s+)|(<unicode>+|\\*)|\\#(<unicode>+)|\\.(<unicode>+)|\\[\\s*(<unicode1>+)(?:\\s*([*^$!~|]?=)(?:\\s*(?:(["\']?)(.*?)\\9)))?\\s*\\](?!\\])|(:+)(<unicode>+)(?:\\((?:(?:(["\'])([^\\13]*)\\13)|((?:\\([^)]+\\)|[^()]*)+))\\))?)'.replace(/<combinator>/, '[' + escape('>+~`!@$%^&={}\\;</') + ']').replace(/<unicode>/g, '(?:[\\w\\u00a1-\\uFFFF-]|\\\\[^\\s0-9a-f])').replace(/<unicode1>/g, '(?:[:\\w\\u00a1-\\uFFFF-]|\\\\[^\\s0-9a-f])'));
+    var Part = function Part(combinator) {
+      this.combinator = combinator || ' ';
+      this.tag = '*';
+    };
+    Part.prototype.toString = function () {
+      if (!this.raw) {
+        var xpr = '', k, part;
+        xpr += this.tag || '*';
+        if (this.id)
+          xpr += '#' + this.id;
+        if (this.classes)
+          xpr += '.' + this.classList.join('.');
+        if (this.attributes)
+          for (k = 0; part = this.attributes[k++];) {
+            xpr += '[' + part.name + (part.operator ? part.operator + '"' + part.value + '"' : '') + ']';
+          }
+        if (this.pseudos)
+          for (k = 0; part = this.pseudos[k++];) {
+            xpr += ':' + part.name;
+            if (part.value)
+              xpr += '(' + part.value + ')';
+          }
+        this.raw = xpr;
+      }
+      return this.raw;
+    };
+    var Expression = function Expression() {
+      this.length = 0;
+    };
+    Expression.prototype.toString = function () {
+      if (!this.raw) {
+        var xpr = '';
+        for (var j = 0, bit; bit = this[j++];) {
+          if (j !== 1)
+            xpr += ' ';
+          if (bit.combinator !== ' ')
+            xpr += bit.combinator + ' ';
+          xpr += bit;
+        }
+        this.raw = xpr;
+      }
+      return this.raw;
+    };
+    var replacer = function (rawMatch, separator, combinator, combinatorChildren, tagName, id, className, attributeKey, attributeOperator, attributeQuote, attributeValue, pseudoMarker, pseudoClass, pseudoQuote, pseudoClassQuotedValue, pseudoClassValue) {
+      var expression, current;
+      if (separator || !this.length) {
+        expression = this[this.length++] = new Expression();
+        if (separator)
+          return '';
+      }
+      if (!expression)
+        expression = this[this.length - 1];
+      if (combinator || combinatorChildren || !expression.length) {
+        current = expression[expression.length++] = new Part(combinator);
+      }
+      if (!current)
+        current = expression[expression.length - 1];
+      if (tagName) {
+        current.tag = unescape(tagName);
+      } else if (id) {
+        current.id = unescape(id);
+      } else if (className) {
+        var unescaped = unescape(className);
+        var classes = current.classes || (current.classes = {});
+        if (!classes[unescaped]) {
+          classes[unescaped] = escape(className);
+          var classList = current.classList || (current.classList = []);
+          classList.push(unescaped);
+          classList.sort();
+        }
+      } else if (pseudoClass) {
+        pseudoClassValue = pseudoClassValue || pseudoClassQuotedValue;
+        ;
+        (current.pseudos || (current.pseudos = [])).push({
+          type: pseudoMarker.length == 1 ? 'class' : 'element',
+          name: unescape(pseudoClass),
+          escapedName: escape(pseudoClass),
+          value: pseudoClassValue ? unescape(pseudoClassValue) : null,
+          escapedValue: pseudoClassValue ? escape(pseudoClassValue) : null
+        });
+      } else if (attributeKey) {
+        attributeValue = attributeValue ? escape(attributeValue) : null;
+        ;
+        (current.attributes || (current.attributes = [])).push({
+          operator: attributeOperator,
+          name: unescape(attributeKey),
+          escapedName: escape(attributeKey),
+          value: attributeValue ? unescape(attributeValue) : null,
+          escapedValue: attributeValue ? escape(attributeValue) : null
+        });
+      }
+      return '';
+    };
+    var Expressions = function Expressions(expression) {
+      this.length = 0;
+      var self = this;
+      var original = expression, replaced;
+      while (expression) {
+        replaced = expression.replace(slickRe, function () {
+          return replacer.apply(self, arguments);
+        });
+        if (replaced === expression)
+          throw new Error(original + ' is an invalid expression');
+        expression = replaced;
+      }
+    };
+    Expressions.prototype.toString = function () {
+      if (!this.raw) {
+        var expressions = [];
+        for (var i = 0, expression; expression = this[i++];)
+          expressions.push(expression);
+        this.raw = expressions.join(', ');
+      }
+      return this.raw;
+    };
+    var cache = {};
+    var parse = function (expression) {
+      if (expression == null)
+        return null;
+      expression = ('' + expression).replace(/^\s+|\s+$/g, '');
+      return cache[expression] || (cache[expression] = new Expressions(expression));
+    };
+    module.exports = parse;
+  },
+  '../../../node_modules/nodes/util/type-of.js': function (require, module, exports, global) {
+    'use strict';
+    function typeOf(object) {
+      if (object === void 0)
+        return 'Undefined';
+      if (object === null)
+        return 'Null';
+      return object.constructor.name;
+    }
+    typeOf.String = function (item) {
+      return typeOf(item) === 'String';
+    };
+    typeOf.Object = function (item) {
+      return typeOf(item) === 'Object';
+    };
+    typeOf.Number = function (item) {
+      return typeOf(item) === 'Number';
+    };
+    typeOf.RegExp = function (item) {
+      return typeOf(item) === 'RegExp';
+    };
+    typeOf.Boolean = function (item) {
+      return typeOf(item) === 'Boolean';
+    };
+    typeOf.Function = function (item) {
+      return typeOf(item) === 'Function';
+    };
+    typeOf.Array = function (item) {
+      return typeOf(item) === 'Array';
+    };
+    module.exports = typeOf;
+  },
   '../../../node_modules/mout/object/forOwn.js': function (require, module, exports, global) {
     var hasOwn = require('../../../node_modules/mout/object/hasOwn.js');
     var forIn = require('../../../node_modules/mout/object/forIn.js');
@@ -12083,38 +12161,6 @@
       }
     }
     module.exports = deepMatches;
-  },
-  '../../../node_modules/nodes/util/type-of.js': function (require, module, exports, global) {
-    'use strict';
-    function typeOf(object) {
-      if (object === void 0)
-        return 'Undefined';
-      if (object === null)
-        return 'Null';
-      return object.constructor.name;
-    }
-    typeOf.String = function (item) {
-      return typeOf(item) === 'String';
-    };
-    typeOf.Object = function (item) {
-      return typeOf(item) === 'Object';
-    };
-    typeOf.Number = function (item) {
-      return typeOf(item) === 'Number';
-    };
-    typeOf.RegExp = function (item) {
-      return typeOf(item) === 'RegExp';
-    };
-    typeOf.Boolean = function (item) {
-      return typeOf(item) === 'Boolean';
-    };
-    typeOf.Function = function (item) {
-      return typeOf(item) === 'Function';
-    };
-    typeOf.Array = function (item) {
-      return typeOf(item) === 'Array';
-    };
-    module.exports = typeOf;
   },
   '../../../node_modules/source-map/lib/source-map/base64-vlq.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
@@ -12364,6 +12410,33 @@
       exports.compareByGeneratedPositions = compareByGeneratedPositions;
     });
   },
+  '../../../node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
+    if (typeof define !== 'function') {
+      var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
+    }
+    define(function (require, exports, module) {
+      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
+        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
+        var cmp = aCompare(aNeedle, aHaystack[mid], true);
+        if (cmp === 0) {
+          return aHaystack[mid];
+        } else if (cmp > 0) {
+          if (aHigh - mid > 1) {
+            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
+          }
+          return aHaystack[mid];
+        } else {
+          if (mid - aLow > 1) {
+            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
+          }
+          return aLow < 0 ? null : aHaystack[aLow];
+        }
+      }
+      exports.search = function search(aNeedle, aHaystack, aCompare) {
+        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
+      };
+    });
+  },
   '../../../node_modules/source-map/lib/source-map/array-set.js': function (require, module, exports, global) {
     if (typeof define !== 'function') {
       var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
@@ -12410,33 +12483,6 @@
         return this._array.slice();
       };
       exports.ArraySet = ArraySet;
-    });
-  },
-  '../../../node_modules/source-map/lib/source-map/binary-search.js': function (require, module, exports, global) {
-    if (typeof define !== 'function') {
-      var define = require('../../../node_modules/source-map/node_modules/amdefine/amdefine.js')(module, require);
-    }
-    define(function (require, exports, module) {
-      function recursiveSearch(aLow, aHigh, aNeedle, aHaystack, aCompare) {
-        var mid = Math.floor((aHigh - aLow) / 2) + aLow;
-        var cmp = aCompare(aNeedle, aHaystack[mid], true);
-        if (cmp === 0) {
-          return aHaystack[mid];
-        } else if (cmp > 0) {
-          if (aHigh - mid > 1) {
-            return recursiveSearch(mid, aHigh, aNeedle, aHaystack, aCompare);
-          }
-          return aHaystack[mid];
-        } else {
-          if (mid - aLow > 1) {
-            return recursiveSearch(aLow, mid, aNeedle, aHaystack, aCompare);
-          }
-          return aLow < 0 ? null : aHaystack[aLow];
-        }
-      }
-      exports.search = function search(aNeedle, aHaystack, aCompare) {
-        return aHaystack.length > 0 ? recursiveSearch(-1, aHaystack.length, aNeedle, aHaystack, aCompare) : null;
-      };
     });
   },
   '../../../node_modules/mout/object/forIn.js': function (require, module, exports, global) {
