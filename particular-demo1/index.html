@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>particular</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <script src="./3rd/three.js"></script>
+    <script src="./3rd/orbit-controls.js"></script>
+    <script src="./3rd/stats.js"></script>
+
+    <script src="./particular-build.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #111;
+        overflow: hidden;
+      }
+      #stats {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      #infobox {
+        font-family: sans-serif;
+        font-size: 10px;
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 200px;
+        padding: 10px;
+        background: white;
+      }
+      hr {
+        height: 1px;
+        background: #ccc;
+        border: 0;
+      }
+    </style>
+
+  </head>
+  <body id="game">
+    <div id="infobox">
+      <div>Particular particle engine. This demo shows forces, constraints, and light reactivity.</div>
+      <hr/>
+      <div>Current particle count: <span id="count">0</span></div>
+    </div>
+    <script>
+      "use strict";
+      /* global THREE, Stats, particular */
+      /* eslint indent: 0 */
+
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>   INIT   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+      var scene = new THREE.Scene();
+
+      var SCREEN_WIDTH = window.innerWidth,
+      SCREEN_HEIGHT = window.innerHeight;
+
+      var VIEW_ANGLE = 45,
+          ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT,
+          NEAR = 10,
+          FAR = 10000;
+
+      var camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+
+      camera.position.z = 1000;
+
+      scene.add(camera);
+
+      var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      renderer.shadowMapEnabled = true;
+      renderer.shadowMapSoft = true;
+      renderer.shadowMapType = THREE.PCFShadowMap;
+
+      renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+      renderer.shadowMapCullFace = THREE.CullFaceBack;
+      renderer.sortObjects = false;
+
+      var ambilight = new THREE.AmbientLight("#606060"); // soft white light
+      scene.add(ambilight);
+
+      var frontLight = new THREE.DirectionalLight("#606060", 1);
+      frontLight.position.set(400, 100, 1000);
+      scene.add(frontLight);
+
+      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>   PLAY   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+      var bluePoint = new THREE.PointLight("blue", 2, 300);
+      scene.add(bluePoint);
+
+      var bluePointHelper = new THREE.PointLightHelper(bluePoint, 20);
+      scene.add(bluePointHelper);
+
+      bluePoint.position.x = 200;
+      bluePoint.position.y = 300;
+      bluePoint.position.z = -200;
+
+      var greenPoint = new THREE.PointLight("green", 2, 300);
+      scene.add(greenPoint);
+
+      var greenPointHelper = new THREE.PointLightHelper(greenPoint, 20);
+      scene.add(greenPointHelper);
+
+      greenPoint.position.x = 0;
+      greenPoint.position.y = 0;
+      greenPoint.position.z = 0;
+
+      var redPoint = new THREE.PointLight("red", 2, 300);
+      scene.add(redPoint);
+
+      var redPointHelper = new THREE.PointLightHelper(redPoint, 20);
+      scene.add(redPointHelper);
+
+      redPoint.position.x = -200;
+      redPoint.position.y = -300;
+      redPoint.position.z = 200;
+
+      var yellowPoint = new THREE.PointLight("yellow", 2, 300);
+      scene.add(yellowPoint);
+
+      var yellowPointHelper = new THREE.PointLightHelper(yellowPoint, 20);
+      scene.add(yellowPointHelper);
+
+      yellowPoint.position.x = -500;
+      yellowPoint.position.y = 300;
+      yellowPoint.position.z = 0;
+
+      var magentaPoint = new THREE.PointLight("purple", 2, 300);
+      scene.add(magentaPoint);
+
+      var magentaPointHelper = new THREE.PointLightHelper(magentaPoint, 20);
+      scene.add(magentaPointHelper);
+
+      magentaPoint.position.x = 500;
+      magentaPoint.position.y = -300;
+      magentaPoint.position.z = 0;
+
+      // MOUSE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+      var mousePosition = new THREE.Vector3(0, 20, 0);
+      var mouseDown = false;
+
+      document.addEventListener("mousemove", function(event) {
+        mousePosition.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1, 0.5);
+        mousePosition.unproject(camera);
+        var dir = mousePosition.sub(camera.position).normalize();
+        var distance = -camera.position.z / dir.z;
+        mousePosition.addVectors(camera.position, dir.multiplyScalar(distance));
+      }, false);
+
+      document.addEventListener("mousedown", function() {
+        mouseDown = true;
+      }, false);
+
+      document.addEventListener("mouseup", function() {
+        mouseDown = false;
+      }, false);
+
+      // PARTICULAR >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+      var particleTexture = THREE.ImageUtils.loadTexture("./img/particle.png");
+
+      var material = new particular.Material({
+        blending: THREE.AdditiveBlending,
+        map: particleTexture,
+        lights: true
+      });
+
+      var cloud = new particular.Cloud(material, {
+        color: "white",
+        life: 0,
+        length: 50000,
+        damping: 0.006,
+        size: 16,
+        position: new particular.SphereSurfaceZone(50)
+      });
+
+      cloud.origin = mousePosition;
+      cloud.addAccelerator(new particular.RadialForce(mousePosition, -1000));
+
+      var north = new THREE.Vector3(0, 1, 0);
+
+      cloud.addImpulse(new particular.OrbitalForce(mousePosition, north, 1));
+
+      var radialForce = new particular.RadialForce(mousePosition, 1500);
+
+      cloud.addCollider(new particular.SphereConstraint(mousePosition, 50, 0.2));
+
+      scene.add(cloud);
+
+      // RENDER ----------------------->
+
+      var stats = new Stats();
+      stats.setMode(2); // 0: fps, 1: ms
+      document.body.appendChild(stats.domElement);
+
+
+      document.querySelector("#game").appendChild(renderer.domElement);
+      var controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+      var countElement = document.querySelector("#count");
+
+      var render = function() {
+        controls.update();
+
+        stats.begin();
+        cloud.emit(20);
+        countElement.textContent = cloud.alive.length;
+
+        if (mouseDown) cloud.accelerate(radialForce);
+        cloud.update(1 / 60);
+        stats.end();
+
+        renderer.render(scene, camera);
+
+        requestAnimationFrame(render);
+      };
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      window.addEventListener("resize", onWindowResize, false);
+
+      requestAnimationFrame(render);
+
+    </script>
+  </body>
+
+</html>
