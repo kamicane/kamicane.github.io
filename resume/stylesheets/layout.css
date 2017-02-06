@@ -9,67 +9,74 @@
 
 /* Table of Content
 ==================================================
-    #Site Styles
-    #Page Styles
-    #Media Queries
-    #Font-Face */
+  #Site Styles
+  #Page Styles
+  #Media Queries
+  #Font-Face */
 
 /* #Site Styles
 ================================================== */
 
 body {
-    background: #fff url("../images/noise.png") repeat;
+  background: #fff url("../images/noise.png") repeat;
 
 }
 
 #me {
-    padding: 40px 0 20px;
+  padding: 40px 0 20px;
 }
 
 #me h1 {
-    margin-bottom: 6px;
+  margin-bottom: 6px;
 }
 
 #me h2 {
-    font-family: "Georgia", "Times New Roman", serif;
-    font-style: italic;
-    font-size: 28px;
-    color: #888;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-style: italic;
+  font-size: 28px;
+  color: #888;
 }
 
 #profile {
 /*    border-left: 1px solid #ddd;
-    padding-left: 40px;
-    width: 599px;*/
+  padding-left: 40px;
+  width: 599px;*/
 }
 
 dt {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 #profile p {
-    font-family: "Georgia", "Times New Roman", serif;
-    font-style: italic;
-    font-size: 22px;
-    color: #888;
-    line-height: 38px;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-style: italic;
+  font-size: 22px;
+  color: #888;
+  line-height: 38px;
 }
 
 #main {
-    padding-bottom: 60px;
+  padding-bottom: 60px;
 }
 
 hr.s {
-    clear: both;
-    margin-bottom: 10px;
+  clear: both;
+  margin-bottom: 10px;
 }
 
 a:link, a:visited {
-    color: #f30;
+  color: #f30;
 }
 
 a:hover, a:active {
-    color: #aaa;
+  color: #aaa;
+}
+
+img.f {
+  float: left;
+  shape-outside: circle(50%);
+  shape-image-threshold: 0.5;
+  padding-right: 16px;
 }
 
 /* #Page Styles
@@ -78,17 +85,17 @@ a:hover, a:active {
 /* #Media Queries
 ================================================== */
 
-    /* Smaller than standard 960 (devices and browsers) */
-    @media only screen and (max-width: 959px) {}
+  /* Smaller than standard 960 (devices and browsers) */
+  @media only screen and (max-width: 959px) {}
 
-    /* Tablet Portrait size to standard 960 (devices and browsers) */
-    @media only screen and (min-width: 768px) and (max-width: 959px) {}
+  /* Tablet Portrait size to standard 960 (devices and browsers) */
+  @media only screen and (min-width: 768px) and (max-width: 959px) {}
 
-    /* All Mobile Sizes (devices and browser) */
-    @media only screen and (max-width: 767px) {}
+  /* All Mobile Sizes (devices and browser) */
+  @media only screen and (max-width: 767px) {}
 
-    /* Mobile Landscape Size to Tablet Portrait (devices and browsers) */
-    @media only screen and (min-width: 480px) and (max-width: 767px) {}
+  /* Mobile Landscape Size to Tablet Portrait (devices and browsers) */
+  @media only screen and (min-width: 480px) and (max-width: 767px) {}
 
-    /* Mobile Portrait Size to Mobile Landscape Size (devices and browsers) */
-    @media only screen and (max-width: 479px) {}
+  /* Mobile Portrait Size to Mobile Landscape Size (devices and browsers) */
+  @media only screen and (max-width: 479px) {}
